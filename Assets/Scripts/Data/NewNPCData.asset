@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8de98128c323f246bc7417133e42262, type: 3}
+  m_Name: NewNPCData
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingSimulation.Data.NPCData
+  npcName: Human
+  modelPrefab: {fileID: 0}
+  modelColor: {r: 0.2, g: 0.6, b: 1, a: 1}
+  placementSound: {fileID: 0}
+  ambientSound: {fileID: 0}
+  ambientVolume: 0.5
+  placementEffectPrefab: {fileID: 0}
+  persistentEffectPrefab: {fileID: 0}
+  moveSpeed: 2
+  wanderRadius: 10
+  wanderInterval: 3
+  mass: 50
+  cost: 500
+  previewColor: {r: 0.2, g: 0.6, b: 1, a: 0.4}
