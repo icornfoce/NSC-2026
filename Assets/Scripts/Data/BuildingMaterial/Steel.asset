@@ -17,5 +17,5 @@ MonoBehaviour:
   density: 2400
   breakForce: 50000
   physicsMaterial: {fileID: 0}
-  costMultiplier: 1
+  costMultiplier: 2
   materialColor: {r: 0.8415094, g: 0.8415094, b: 0.8415094, a: 1}

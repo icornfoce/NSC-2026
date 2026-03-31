@@ -32,8 +32,11 @@ namespace BuildingSimulation.Building
         private Vector3 _currentGhostScale;
         private float _currentRotationY;
         private bool _isPlacing;
-        private bool _isDeleteMode;
+        private bool _isSelectionMode;
         private bool _isValidPosition;
+
+        private BuildingPart _tempEditingPart; // To store part being moved
+        private float _tempCostOriginal; // To handle budget refunds on move
 
         // Track all placed parts
         private readonly List<BuildingPart> _placedParts = new List<BuildingPart>();
@@ -78,9 +81,9 @@ namespace BuildingSimulation.Building
                     CancelPlacement();
                 }
             }
-            else if (_isDeleteMode)
+            else if (_isSelectionMode)
             {
-                HandleDeleteMode();
+                HandleSelectionMode();
             }
         }
 
@@ -92,7 +95,6 @@ namespace BuildingSimulation.Building
         public void SelectPart(BuildingPartData data)
         {
             CancelPlacement();
-            _isDeleteMode = false;
             _selectedPartData = data;
             _selectedMaterial = data.defaultMaterial;
             _currentGhostScale = data.defaultScale;
@@ -110,22 +112,74 @@ namespace BuildingSimulation.Building
         }
 
         /// <summary>
-        /// Toggle delete mode.
+        /// Enter selection mode (Modify Mode).
         /// </summary>
-        public void ToggleDeleteMode()
+        public void ToggleSelectMode()
         {
-            CancelPlacement();
-            _isDeleteMode = !_isDeleteMode;
+            bool wasSelectionMode = _isSelectionMode;
+            CancelPlacement(); // This resets _isSelectionMode to false
+            
+            _isSelectionMode = !wasSelectionMode; // Restore and invert
+
+            if (!_isSelectionMode) UI.ContextUI.Instance?.Hide();
         }
 
         public void CancelPlacement()
         {
             _isPlacing = false;
+            _isSelectionMode = false;
+            UI.ContextUI.Instance?.Hide();
+
+            if (_tempEditingPart != null)
+            {
+                _tempEditingPart.gameObject.SetActive(true);
+                _tempEditingPart = null;
+            }
+
             if (_ghostObject != null)
             {
                 Destroy(_ghostObject);
                 _ghostObject = null;
             }
+        }
+
+        /// <summary>
+        /// Start moving an existing part.
+        /// </summary>
+        public void StartMovingPart(BuildingPart part)
+        {
+            if (part == null) return;
+            
+            // Setup ghost from part data
+            _selectedPartData = part.PartData;
+            _selectedMaterial = part.MaterialData;
+            _currentGhostScale = part.CurrentScale;
+            _currentRotationY = part.transform.eulerAngles.y;
+            _isPlacing = true;
+            _isSelectionMode = false;
+            
+            _tempEditingPart = part;
+            _tempEditingPart.gameObject.SetActive(false); // Hide original
+            
+            CreateGhost();
+        }
+
+        /// <summary>
+        /// Apply the currently selected Material (from the UI) to a part.
+        /// </summary>
+        public void ApplySelectedMaterialToPart(BuildingPart part)
+        {
+            if (part == null || _selectedMaterial == null) return;
+
+            float oldCost = part.GetCost();
+            part.UpdateMaterial(_selectedMaterial);
+            float newCost = part.GetCost();
+
+            float diff = newCost - oldCost;
+            if (diff > 0) BudgetManager.Instance?.Deduct(diff);
+            else BudgetManager.Instance?.Refund(Mathf.Abs(diff));
+            
+            Debug.Log($"Updated Material: {part.MaterialData.materialName} | Budget Diff: ${diff:F0}");
         }
 
         /// <summary>
@@ -283,7 +337,9 @@ namespace BuildingSimulation.Building
                     }
                     else
                     {
-                        renderer.material.color = _selectedPartData.previewColor;
+                        // Reflect the SELECTED material color
+                        Color baseColor = _selectedMaterial != null ? _selectedMaterial.materialColor : _selectedPartData.previewColor;
+                        renderer.material.color = new Color(baseColor.r, baseColor.g, baseColor.b, 0.5f);
                     }
                 }
             }
@@ -370,6 +426,17 @@ namespace BuildingSimulation.Building
                 return;
             }
 
+            // --- IF MOVING: Finalize the move ---
+            if (_tempEditingPart != null)
+            {
+                // Refund original part cost before placing the new one (avoids double charging if budget is low)
+                float refund = _tempEditingPart.GetCost();
+                BudgetManager.Instance?.Refund(refund);
+                _placedParts.Remove(_tempEditingPart);
+                Destroy(_tempEditingPart.gameObject);
+                _tempEditingPart = null;
+            }
+
             // Create real part
             GameObject partObj = CreatePartVisual(_selectedPartData);
             partObj.name = _selectedPartData.partName;
@@ -418,19 +485,23 @@ namespace BuildingSimulation.Building
             Debug.Log($"Placed {_selectedPartData.partName} | Cost: ${cost:F0} | Budget: ${BudgetManager.Instance.CurrentBudget:F0}");
         }
 
-        // ─── Delete Mode ──────────────────────────────────────────────
+        // ─── Selection Mode ────────────────────────────────────────────
 
-        private void HandleDeleteMode()
+        private void HandleSelectionMode()
         {
             if (!Input.GetMouseButtonDown(0)) return;
 
             Ray ray = _mainCam.ScreenPointToRay(Input.mousePosition);
             if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, maxPlacementDistance))
             {
-                var part = hit.collider.GetComponent<BuildingPart>();
+                var part = hit.collider.GetComponent<BuildingPart>() ?? hit.collider.GetComponentInParent<BuildingPart>();
                 if (part != null)
                 {
-                    RemovePart(part);
+                    UI.ContextUI.Instance?.Show(part, hit.point);
+                }
+                else
+                {
+                    UI.ContextUI.Instance?.Hide();
                 }
             }
         }

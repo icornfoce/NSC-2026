@@ -15,7 +15,7 @@ MonoBehaviour:
   materialName: Wood
   materialType: 2
   density: 2400
-  breakForce: 50000
+  breakForce: 50
   physicsMaterial: {fileID: 0}
   costMultiplier: 1
   materialColor: {r: 0.2905661, g: 0.21378727, b: 0.20339625, a: 1}

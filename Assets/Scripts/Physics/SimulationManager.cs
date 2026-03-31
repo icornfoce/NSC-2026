@@ -49,9 +49,9 @@ namespace BuildingSimulation.Physics
             // Validate building first
             if (Disaster.BuildingValidator.Instance != null)
             {
-                if (!Disaster.BuildingValidator.Instance.Validate())
+                if (!Disaster.BuildingValidator.Instance.Validate() && !Disaster.BuildingValidator.Instance.forceStart)
                 {
-                    Debug.LogWarning("Building validation failed! Cannot start simulation.");
+                    OnSimulationStateChanged?.Invoke(false);
                     return;
                 }
             }

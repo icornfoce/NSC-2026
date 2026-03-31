@@ -23,7 +23,7 @@ namespace BuildingSimulation.UI
         [SerializeField] private Button floorButton;
         [SerializeField] private Button stairsButton;
         [SerializeField] private Button doorButton;
-        [SerializeField] private Button deleteButton;
+        [SerializeField] private Button selectButton;
 
         [Header("Part Data Assets")]
         [SerializeField] private BuildingPartData pillarData;
@@ -114,8 +114,15 @@ namespace BuildingSimulation.UI
             if (doorButton != null && doorData != null)
                 doorButton.onClick.AddListener(() => SelectPart(doorData));
 
-            if (deleteButton != null)
-                deleteButton.onClick.AddListener(() => BuildingSystem.Instance?.ToggleDeleteMode());
+            if (selectButton != null)
+                selectButton.onClick.AddListener(EnterSelectMode);
+        }
+
+        private void EnterSelectMode()
+        {
+            NPCPlacer.Instance?.CancelPlacement();
+            BuildingSystem.Instance?.ToggleSelectMode();
+            SetStatus("Modify Mode Active");
         }
 
         private void SelectPart(BuildingPartData data)
@@ -232,13 +239,13 @@ namespace BuildingSimulation.UI
             if (floorButton != null) floorButton.interactable = canBuild;
             if (stairsButton != null) stairsButton.interactable = canBuild;
             if (doorButton != null) doorButton.interactable = canBuild;
-            if (deleteButton != null) deleteButton.interactable = canBuild;
+            if (selectButton != null) selectButton.interactable = canBuild;
             if (materialDropdown != null) materialDropdown.interactable = canBuild;
             if (placeNPCButton != null) placeNPCButton.interactable = canBuild;
             if (npcDropdown != null) npcDropdown.interactable = canBuild;
 
-            // Show validation result
-            if (simulating && BuildingValidator.Instance != null)
+            // Show validation result / message
+            if (BuildingValidator.Instance != null)
             {
                 SetStatus(BuildingValidator.Instance.LastMessage);
             }

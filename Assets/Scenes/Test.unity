@@ -1982,7 +1982,7 @@ MonoBehaviour:
   floorButton: {fileID: 537886055}
   stairsButton: {fileID: 630765385}
   doorButton: {fileID: 1564596758}
-  deleteButton: {fileID: 1664600306}
+  selectButton: {fileID: 0}
   pillarData: {fileID: 11400000, guid: bafd9e5cb117e534f91f64c5f32dd1e1, type: 2}
   wallData: {fileID: 11400000, guid: 3224215e03dc2ff4ab8b576f09954ce6, type: 2}
   floorData: {fileID: 11400000, guid: 5c510cfa2fadaff489cc6e745312ed4b, type: 2}
@@ -4907,6 +4907,7 @@ GameObject:
   - component: {fileID: 1858835446}
   - component: {fileID: 1858835445}
   - component: {fileID: 1858835444}
+  - component: {fileID: 1858835449}
   - component: {fileID: 1858835448}
   - component: {fileID: 1858835447}
   m_Layer: 0
@@ -5001,6 +5002,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingSimulation.Building.SoundManager
   defaultSFXVolume: 1
   maxSimultaneousSFX: 10
+--- !u!114 &1858835449
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1858835442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c22b16e31f9197a4593f2efc500a24e2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingSimulation.Physics.StructuralJointManager
+  connectionRadius: 0.5
+  buildingLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!1 &1882644941
 GameObject:
   m_ObjectHideFlags: 0
@@ -5014,7 +5031,7 @@ GameObject:
   - component: {fileID: 1882644944}
   - component: {fileID: 1882644942}
   m_Layer: 5
-  m_Name: Dropdown
+  m_Name: Material-Dropdown
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5088,7 +5105,33 @@ MonoBehaviour:
         m_MethodName: SetMaterial
         m_Mode: 2
         m_Arguments:
-          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgument: {fileID: 11400000, guid: c19df16b721ad5c4ba4f4b87ee91d096, type: 2}
+          m_ObjectArgumentAssemblyTypeName: BuildingSimulation.Data.BuildingMaterialData,
+            Assembly-CSharp
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 1625897338}
+        m_TargetAssemblyTypeName: BuildingSimulation.Building.BuildingSystem, Assembly-CSharp
+        m_MethodName: SetMaterial
+        m_Mode: 2
+        m_Arguments:
+          m_ObjectArgument: {fileID: 11400000, guid: 4a09d6bd53e3a4a4787ee87f07436630, type: 2}
+          m_ObjectArgumentAssemblyTypeName: BuildingSimulation.Data.BuildingMaterialData,
+            Assembly-CSharp
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 1625897338}
+        m_TargetAssemblyTypeName: BuildingSimulation.Building.BuildingSystem, Assembly-CSharp
+        m_MethodName: SetMaterial
+        m_Mode: 2
+        m_Arguments:
+          m_ObjectArgument: {fileID: 11400000, guid: 5000d55fded468243a22710bace4f2d1, type: 2}
           m_ObjectArgumentAssemblyTypeName: BuildingSimulation.Data.BuildingMaterialData,
             Assembly-CSharp
           m_IntArgument: 0

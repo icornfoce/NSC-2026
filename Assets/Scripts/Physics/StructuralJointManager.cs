@@ -54,19 +54,25 @@ namespace BuildingSimulation.Physics
             {
                 if (neighborCol.gameObject == newPart.gameObject) continue;
 
-                var neighborPart = neighborCol.GetComponent<BuildingPart>();
-                if (neighborPart == null) continue;
+                var neighborRb = neighborCol.attachedRigidbody;
+                var neighborPart = neighborCol.GetComponent<BuildingPart>() ?? neighborCol.GetComponentInParent<BuildingPart>();
 
-                var neighborRb = neighborCol.GetComponent<Rigidbody>();
-                if (neighborRb == null) continue;
-
-                // Create joint on the new part connecting to the neighbor
+                // Create joint on the new part
                 var joint = newPart.gameObject.AddComponent<FixedJoint>();
-                joint.connectedBody = neighborRb;
+                
+                // If neighbor has a Rigidbody, connect to it.
+                // If not, it's considered "Ground" or "Environment", so we connect to nothing (anchored to world space).
+                if (neighborRb != null)
+                {
+                    joint.connectedBody = neighborRb;
+                }
 
                 // Break force = minimum of the two materials
-                float breakForceA = newPart.MaterialData != null ? newPart.MaterialData.breakForce : 50000f;
-                float breakForceB = neighborPart.MaterialData != null ? neighborPart.MaterialData.breakForce : 50000f;
+                float breakForceA = newPart.MaterialData != null ? newPart.MaterialData.breakForce : 500000f;
+                float breakForceB = (neighborPart != null && neighborPart.MaterialData != null) 
+                    ? neighborPart.MaterialData.breakForce 
+                    : 1000000f; // Static environment is very strong
+                
                 joint.breakForce = Mathf.Min(breakForceA, breakForceB);
                 joint.breakTorque = joint.breakForce * 0.5f;
 

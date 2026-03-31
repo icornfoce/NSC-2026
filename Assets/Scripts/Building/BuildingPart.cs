@@ -94,6 +94,19 @@ namespace BuildingSimulation.Building
             _rb.isKinematic = !useGravity;
         }
 
+        /// <summary>
+        /// Change the material of this part at runtime.
+        /// </summary>
+        public void UpdateMaterial(BuildingMaterialData newMaterial)
+        {
+            if (newMaterial == null) return;
+            materialData = newMaterial;
+            ApplyMaterial();
+            
+            // Update mass if Rigidbody exists
+            if (_rb != null) _rb.mass = GetMass();
+        }
+
         private void ApplyMaterial()
         {
             if (materialData == null || _renderers == null || _renderers.Length == 0) return;

@@ -15,10 +15,13 @@ namespace BuildingSimulation.Disaster
 
         [Header("Validation Rules")]
         [Tooltip("Minimum building height in meters to pass validation")]
-        [SerializeField] private float minimumHeight = 5f;
+        [SerializeField] private float minimumHeight = 0.5f; // Lowered from 5f
 
         [Tooltip("Minimum number of doors required")]
-        [SerializeField] private int minimumDoors = 1;
+        [SerializeField] private int minimumDoors = 0; // Lowered from 1
+
+        [Tooltip("Force start regardless of validation")]
+        public bool forceStart = false;
 
         [Header("Status")]
         [SerializeField] private string lastValidationMessage = "";
