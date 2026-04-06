@@ -10,7 +10,7 @@ namespace Simulation.Data
         public float basePrice;
         public float baseMass;
         public float baseHP;
-        public Vector2Int size = Vector2Int.one; // Grid size (e.g. 1x1, 2x3)
+        public Vector3Int size = Vector3Int.one; // Grid size (e.g. 1x1x1, 2x3x1)
 
         [Header("Assets")]
         public GameObject prefab;

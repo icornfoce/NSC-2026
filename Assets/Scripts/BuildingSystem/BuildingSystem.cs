@@ -47,7 +47,7 @@ namespace Simulation.Building
         // Placement Temp Data
         private Vector3 _currentHitPos;
         private Vector3 _currentHitNormal;
-        private float _currentHeightOffset = 0f;
+        private Collider _currentHitCollider;
         private float _pivotToBottomOffset = 0f;
         private bool _hasValidTarget;
 
@@ -74,7 +74,6 @@ namespace Simulation.Building
         {
             UpdateRaycast();
             HandleHoverHighlight();
-            HandleHeightAdjustment();
 
             switch (_currentMode)
             {
@@ -102,6 +101,7 @@ namespace Simulation.Building
         private void UpdateRaycast()
         {
             _hasValidTarget = false;
+            _currentHitCollider = null;
 
             if (mainCamera == null) return;
 
@@ -114,6 +114,7 @@ namespace Simulation.Building
                 // If we hit our own ghost, ignore it? (Ghost was already set to ignore colliders)
                 _currentHitPos = hit.point;
                 _currentHitNormal = hit.normal;
+                _currentHitCollider = hit.collider;
                 _hasValidTarget = true;
             }
         }
@@ -159,19 +160,6 @@ namespace Simulation.Building
         }
 
         // --------------------------------------------------------------------------------
-        // HEIGHT ADJUSTMENT (Q / E)
-        // --------------------------------------------------------------------------------
-
-        private void HandleHeightAdjustment()
-        {
-            if (!IsPlacing && !IsMoving) return;
-
-            // Finer height adjustment
-            if (Input.GetKeyDown(KeyCode.E)) _currentHeightOffset += heightStep;
-            if (Input.GetKeyDown(KeyCode.Q)) _currentHeightOffset -= heightStep;
-        }
-
-        // --------------------------------------------------------------------------------
         // PLACEMENT MODE
         // --------------------------------------------------------------------------------
 
@@ -186,7 +174,8 @@ namespace Simulation.Building
                 ghostBuilder.UpdatePosition(placePos);
 
                 bool canAfford = _currentBudget >= _selectedData.basePrice;
-                ghostBuilder.SetValid(canAfford);
+                bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
+                ghostBuilder.SetValid(canAfford && isClear);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
@@ -235,7 +224,9 @@ namespace Simulation.Building
             {
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
                 ghostBuilder.UpdatePosition(placePos);
-                ghostBuilder.SetValid(true);
+                
+                bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
+                ghostBuilder.SetValid(isClear);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget)
@@ -268,7 +259,6 @@ namespace Simulation.Building
             ExitMode();
             _selectedData = data;
             _currentMode = BuildMode.Placing;
-            _currentHeightOffset = 0f;
 
             if (data != null && data.prefab != null)
             {
@@ -295,7 +285,6 @@ namespace Simulation.Building
             _movingUnit = null;
             _selectedData = null;
             _currentMode = BuildMode.Idle;
-            _currentHeightOffset = 0f;
             ghostBuilder.DestroyGhost();
             ClearHover();
         }
@@ -309,6 +298,11 @@ namespace Simulation.Building
             _currentBudget -= _selectedData.basePrice;
 
             GameObject obj = Instantiate(_selectedData.prefab, position, Quaternion.Euler(0, rotation, 0));
+            SetLayerRecursively(obj, structureLayer);
+            
+            // Rename to include grid position
+            obj.name = $"{_selectedData.prefab.name} {GetGridPositionString(position)}";
+
             StructureUnit unit = obj.GetComponent<StructureUnit>() ?? obj.AddComponent<StructureUnit>();
             unit.Initialize(_selectedData, rotation);
 
@@ -323,6 +317,10 @@ namespace Simulation.Building
             _movingUnit.transform.position = position;
             _movingUnit.transform.rotation = Quaternion.Euler(0, rotation, 0);
             _movingUnit.SetRotation(rotation);
+            
+            // Rename to include new grid position
+            _movingUnit.name = $"{_movingUnit.Data.prefab.name} {GetGridPositionString(position)}";
+
             _movingUnit.gameObject.SetActive(true);
 
             if (_movingUnit.Data.placeSound != null) AudioSource.PlayClipAtPoint(_movingUnit.Data.placeSound, position);
@@ -356,43 +354,156 @@ namespace Simulation.Building
             float x = useGridSnap ? Mathf.Round(hitPoint.x / gridSize) * gridSize : hitPoint.x;
             float z = useGridSnap ? Mathf.Round(hitPoint.z / gridSize) * gridSize : hitPoint.z;
 
-            // Y is bottom position + offset from pivot to model bottom
-            float y = hitPoint.y + _pivotToBottomOffset + _currentHeightOffset;
+            float y = hitPoint.y;
+
+            if (_currentHitCollider != null)
+            {
+                StructureUnit hitUnit = _currentHitCollider.GetComponentInParent<StructureUnit>();
+                if (hitUnit != null && hitUnit.Data != null)
+                {
+                    // Size is from Data. Y stacking is exactly based on the unit's declared height!
+                    float occupiedHeight = hitUnit.Data.size.y * heightStep;
+                    float bottomY = hitUnit.transform.position.y - GetPivotToBottomOffset(hitUnit.Data.prefab);
+                    float topY = bottomY + occupiedHeight;
+
+                    y = topY;
+                }
+            }
+
+            // Pivot to Bottom offset
+            y += _pivotToBottomOffset;
 
             return new Vector3(x, y, z);
         }
 
+        private void SetLayerRecursively(GameObject obj, LayerMask layerMask)
+        {
+            int layerIndex = 0;
+            for (int i = 0; i < 32; i++)
+            {
+                if ((layerMask.value & (1 << i)) != 0)
+                {
+                    layerIndex = i;
+                    break;
+                }
+            }
+
+            SetLayer(obj, layerIndex);
+        }
+
+        private void SetLayer(GameObject obj, int layer)
+        {
+            obj.layer = layer;
+            foreach (Transform child in obj.transform)
+            {
+                SetLayer(child.gameObject, layer);
+            }
+        }
+
         private float GetPivotToBottomOffset(GameObject prefab)
         {
-            if (prefab == null) return 0f;
+            (Vector3 center, Vector3 size) = GetPrefabBounds(prefab);
+            // Pivot to Bottom offset = - (center.y - size.y * 0.5) = size.y * 0.5 - center.y
+            // Wait, previous logic was -prefabBounds.min.y.
+            // min.y is center.y - size.y * 0.5f.
+            // So -min.y = -(center.y - size.y * 0.5f) = size.y * 0.5f - center.y.
+            return (size.y * 0.5f) - center.y;
+        }
 
-            // Calculate the distance from World position to the bottom of the bounds
-            // This is relative to the pivot/center of the prefab
+        private (Vector3 center, Vector3 size) GetPrefabBounds(GameObject prefab)
+        {
+            if (prefab == null) return (Vector3.zero, Vector3.one);
+
+            // Use BoxCollider if it exists for perfectly consistent size.
+            BoxCollider bc = prefab.GetComponentInChildren<BoxCollider>(true);
+            if (bc != null)
+            {
+                Vector3 center = bc.center;
+                // Scale center if the collider is on a scaled child object
+                if (bc.transform != prefab.transform)
+                {
+                    center = Vector3.Scale(center, bc.transform.localScale) + bc.transform.localPosition;
+                }
+                Vector3 size = Vector3.Scale(bc.size, bc.transform.localScale);
+                return (center, size);
+            }
+
             Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) return 0f;
+            if (renderers.Length == 0) return (Vector3.zero, Vector3.one);
 
-            // We use local bounds to find the offset from pivot
             Bounds prefabBounds = new Bounds(Vector3.zero, Vector3.zero);
             bool boundsInitialized = false;
 
             foreach (var r in renderers)
             {
-                // Get bounds relative to parent root (assuming prefab root is at 0,0,0 locally)
-                // This gives us the model's footprint relative to its pivot
                 MeshFilter mf = r.GetComponent<MeshFilter>();
                 if (mf != null && mf.sharedMesh != null)
                 {
                     Bounds localB = mf.sharedMesh.bounds;
-                    // Move local mesh bounds by the child's local position
+                    // Approximate its root-relative position
+                    localB.size = Vector3.Scale(localB.size, r.transform.localScale);
+                    localB.center = Vector3.Scale(localB.center, r.transform.localScale);
                     localB.center += r.transform.localPosition;
                     
                     if (!boundsInitialized) { prefabBounds = localB; boundsInitialized = true; }
                     else { prefabBounds.Encapsulate(localB); }
                 }
             }
+            return (prefabBounds.center, prefabBounds.size);
+        }
 
-            // Pivot to Bottom offset = -min.y (distance from pivot 0 to floor)
-            return -prefabBounds.min.y;
+        private string GetGridPositionString(Vector3 position)
+        {
+            int gridX = Mathf.RoundToInt(position.x / (gridSize > 0 ? gridSize : 1f));
+            int gridY = Mathf.RoundToInt(position.y / (heightStep > 0 ? heightStep : 1f));
+            int gridZ = Mathf.RoundToInt(position.z / (gridSize > 0 ? gridSize : 1f));
+            return $"({gridX}, {gridY}, {gridZ})";
+        }
+
+        private Bounds GetGridBounds(Vector3 position, float rotation, StructureData data)
+        {
+            if (data == null) return new Bounds(position, Vector3.zero);
+
+            float w = data.size.x * gridSize;
+            float h = data.size.y * heightStep;
+            float d = data.size.z * gridSize;
+
+            Vector3 extents = new Vector3(w * 0.5f, h * 0.5f, d * 0.5f);
+
+            // Swap X and Z for 90 or 270 degree rotations
+            if (Mathf.Abs(rotation % 180f) > 45f)
+            {
+                extents = new Vector3(extents.z, extents.y, extents.x);
+            }
+
+            // Correctly derive bottom and map to the exact world space bounds center
+            float bottomY = position.y - GetPivotToBottomOffset(data.prefab);
+            Vector3 worldCenter = position;
+            worldCenter.y = bottomY + extents.y;
+
+            // Shrink by 5% so adjacent surfaces don't trigger overlap
+            return new Bounds(worldCenter, extents * 1.9f); 
+        }
+
+        private bool IsAreaClear(Vector3 position, float rotation, StructureData structureData)
+        {
+            if (structureData == null) return true;
+
+            Bounds boundsA = GetGridBounds(position, rotation, structureData);
+
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == _movingUnit || unit == null) continue;
+
+                Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
+
+                if (boundsA.Intersects(boundsB))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

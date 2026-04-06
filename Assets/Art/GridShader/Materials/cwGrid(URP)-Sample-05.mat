@@ -83,8 +83,8 @@ Material:
     - _Parallax: 0.02
     - _PlotRangeX: 4.6
     - _PlotRangeY: 10
-    - _RX: 4
-    - _RY: 4
+    - _RX: 10
+    - _RY: 10
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
@@ -104,7 +104,7 @@ Material:
     - _p1: 0
     - _p2: 0
     - _p3: 0
-    - _slw: 1.37
+    - _slw: 1
     - _sx: 0.1
     - _sy: 0.1
     m_Colors:
@@ -116,3 +116,4 @@ Material:
     - _SubGridColor: {r: 0, g: 1, b: 0.90836334, a: 0.45490196}
     - _sc: {r: 0.6373735, g: 1, b: 0.19607842, a: 0.41568628}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1
