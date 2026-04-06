@@ -58,19 +58,29 @@ namespace Simulation.Building
             foreach (var rend in _ghostObject.GetComponentsInChildren<Renderer>())
             {
                 _ghostRenderers.Add(rend);
-                foreach (var mat in rend.materials)
+                
+                // Use temp materials so we don't modify the prefab's materials
+                Material[] sharedMaterials = rend.sharedMaterials;
+                Material[] ghostMats = new Material[sharedMaterials.Length];
+
+                for (int i = 0; i < sharedMaterials.Length; i++)
                 {
-                    // Switch to transparent rendering
-                    mat.SetFloat("_Mode", 3); // Transparent
-                    mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                    mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                    mat.SetInt("_ZWrite", 0);
-                    mat.DisableKeyword("_ALPHATEST_ON");
-                    mat.EnableKeyword("_ALPHABLEND_ON");
-                    mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-                    mat.renderQueue = 3000;
-                    _ghostMaterials.Add(mat);
+                    ghostMats[i] = new Material(sharedMaterials[i]);
+                    
+                    // Switch to transparent rendering (Standard Shader fallback)
+                    if (ghostMats[i].HasProperty("_Mode")) ghostMats[i].SetFloat("_Mode", 3);
+                    
+                    ghostMats[i].SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    ghostMats[i].SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    ghostMats[i].SetInt("_ZWrite", 0);
+                    ghostMats[i].DisableKeyword("_ALPHATEST_ON");
+                    ghostMats[i].EnableKeyword("_ALPHABLEND_ON");
+                    ghostMats[i].DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    ghostMats[i].renderQueue = 3000;
+                    
+                    _ghostMaterials.Add(ghostMats[i]);
                 }
+                rend.materials = ghostMats;
             }
 
             SetValid(true);
@@ -105,7 +115,15 @@ namespace Simulation.Building
         /// </summary>
         public void Rotate()
         {
-            _currentRotation = (_currentRotation + 90f) % 360f;
+            SetRotation((_currentRotation + 90f) % 360f);
+        }
+
+        /// <summary>
+        /// Set rotation to a specific angle.
+        /// </summary>
+        public void SetRotation(float angle)
+        {
+            _currentRotation = angle;
             if (_ghostObject != null)
             {
                 _ghostObject.transform.rotation = Quaternion.Euler(0f, _currentRotation, 0f);

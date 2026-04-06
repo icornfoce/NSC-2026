@@ -26,63 +26,53 @@ namespace Simulation.UI
         /// </summary>
         public void StartBuilding()
         {
-            if (BuildingSystem.Instance == null)
-            {
-                Debug.LogError("BuildUIController: ไม่พบ BuildingSystem ในฉาก!");
-                return;
-            }
-
-            if (structureToBuild == null)
-            {
-                Debug.LogWarning("BuildUIController: ยังไม่ได้กำหนด StructureData ให้กับปุ่มนี้!");
-                return;
-            }
-
+            if (BuildingSystem.Instance == null || structureToBuild == null) return;
             BuildingSystem.Instance.SelectStructure(structureToBuild);
         }
 
         /// <summary>
-        /// เริ่มโหมดเลื่อนของ — คลิกที่ของในฉากเพื่อหยิบขึ้นมาย้าย
-        /// ใช้ลากใส่ OnClick() ของปุ่ม "เลื่อน/ย้าย"
+        /// เริ่มโหมดสร้าง — รับข้อมูลผ่าน Parameter (ใช้ในระบบ Inventory/Slot ได้)
         /// </summary>
-        public void StartMoving()
+        public void StartBuildingWithData(StructureData data)
         {
-            if (BuildingSystem.Instance == null)
-            {
-                Debug.LogError("BuildUIController: ไม่พบ BuildingSystem ในฉาก!");
-                return;
-            }
-
-            BuildingSystem.Instance.EnterMoveMode();
+            if (BuildingSystem.Instance == null || data == null) return;
+            BuildingSystem.Instance.SelectStructure(data);
         }
 
         /// <summary>
-        /// เริ่มโหมดลบ/ขาย — คลิกที่ของในฉากเพื่อลบและได้เงินคืน
-        /// ใช้ลากใส่ OnClick() ของปุ่ม "ลบ/ขาย"
+        /// เริ่มโหมดเลื่อนของ — คลิกที่ของในฉากเพื่อหยิบขึ้นมาย้าย (Toggle)
+        /// </summary>
+        public void StartMoving()
+        {
+            if (BuildingSystem.Instance == null) return;
+
+            // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
+            if (BuildingSystem.Instance.CurrentMode == BuildingSystem.BuildMode.Moving)
+                BuildingSystem.Instance.ExitMode();
+            else
+                BuildingSystem.Instance.EnterMoveMode();
+        }
+
+        /// <summary>
+        /// เริ่มโหมดลบ/ขาย — คลิกที่ของในฉากเพื่อลบและได้เงินคืน (Toggle)
         /// </summary>
         public void StartDeleting()
         {
-            if (BuildingSystem.Instance == null)
-            {
-                Debug.LogError("BuildUIController: ไม่พบ BuildingSystem ในฉาก!");
-                return;
-            }
+            if (BuildingSystem.Instance == null) return;
 
-            BuildingSystem.Instance.EnterDeleteMode();
+            // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
+            if (BuildingSystem.Instance.CurrentMode == BuildingSystem.BuildMode.Deleting)
+                BuildingSystem.Instance.ExitMode();
+            else
+                BuildingSystem.Instance.EnterDeleteMode();
         }
 
         /// <summary>
         /// ยกเลิกโหมดปัจจุบัน กลับสู่ Idle
-        /// ใช้ลากใส่ OnClick() ของปุ่ม "ยกเลิก"
         /// </summary>
         public void Cancel()
         {
-            if (BuildingSystem.Instance == null)
-            {
-                Debug.LogError("BuildUIController: ไม่พบ BuildingSystem ในฉาก!");
-                return;
-            }
-
+            if (BuildingSystem.Instance == null) return;
             BuildingSystem.Instance.ExitMode();
         }
     }
