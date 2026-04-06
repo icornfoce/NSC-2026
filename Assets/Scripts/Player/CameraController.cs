@@ -1,13 +1,8 @@
 using UnityEngine;
 
-namespace BuildingSimulation.Camera
+namespace Simulation.Camera
 {
-    /// <summary>
-    /// Blender-style camera controller.
-    /// Orbit (RMB), Zoom (Scroll), Pan (MMB).
-    /// Attach to the Main Camera.
-    /// </summary>
-    public class BlenderCameraController : MonoBehaviour
+    public class CameraController : MonoBehaviour
     {
         [Header("Orbit")]
         [SerializeField] private float orbitSensitivity = 0.3f;
@@ -97,9 +92,6 @@ namespace BuildingSimulation.Camera
             transform.LookAt(pivotPoint);
         }
 
-        /// <summary>
-        /// Focus camera on a specific world point.
-        /// </summary>
         public void FocusOn(Vector3 point)
         {
             pivotPoint = point;
