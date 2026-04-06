@@ -109,7 +109,7 @@ namespace Simulation.Building
             LayerMask combinedMask = groundLayer | structureLayer;
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-            if (Physics.Raycast(ray, out RaycastHit hit, 500f, combinedMask))
+            if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, 500f, combinedMask))
             {
                 // If we hit our own ghost, ignore it? (Ghost was already set to ignore colliders)
                 _currentHitPos = hit.point;
@@ -133,7 +133,7 @@ namespace Simulation.Building
             }
 
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(ray, out RaycastHit hit, 500f, structureLayer))
+            if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, 500f, structureLayer))
             {
                 // Find StructureUnit on this object or any parent
                 StructureUnit unit = hit.collider.GetComponentInParent<StructureUnit>();
