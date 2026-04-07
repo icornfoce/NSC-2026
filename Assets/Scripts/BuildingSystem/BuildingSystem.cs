@@ -181,7 +181,7 @@ namespace Simulation.Building
             if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
             {
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
-                PlaceStructure(placePos, ghostBuilder.CurrentRotation);
+                PlaceStructure(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
             }
         }
 
@@ -232,7 +232,7 @@ namespace Simulation.Building
             if (Input.GetMouseButtonDown(0) && _hasValidTarget)
             {
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
-                ConfirmMove(placePos, ghostBuilder.CurrentRotation);
+                ConfirmMove(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
             }
         }
 
@@ -293,7 +293,7 @@ namespace Simulation.Building
         // INTERNAL LOGIC
         // --------------------------------------------------------------------------------
 
-        private void PlaceStructure(Vector3 position, float rotation)
+        private void PlaceStructure(Vector3 position, float rotation, Collider targetCollider = null)
         {
             _currentBudget -= _selectedData.basePrice;
 
@@ -306,13 +306,15 @@ namespace Simulation.Building
             StructureUnit unit = obj.GetComponent<StructureUnit>() ?? obj.AddComponent<StructureUnit>();
             unit.Initialize(_selectedData, rotation);
 
+            AttachJoint(obj, targetCollider);
+
             _placedStructures.Add(unit);
 
             if (_selectedData.placeSound != null) AudioSource.PlayClipAtPoint(_selectedData.placeSound, position);
             if (_selectedData.placeVFX != null) Instantiate(_selectedData.placeVFX, position, Quaternion.identity);
         }
 
-        private void ConfirmMove(Vector3 position, float rotation)
+        private void ConfirmMove(Vector3 position, float rotation, Collider targetCollider = null)
         {
             _movingUnit.transform.position = position;
             _movingUnit.transform.rotation = Quaternion.Euler(0, rotation, 0);
@@ -323,11 +325,32 @@ namespace Simulation.Building
 
             _movingUnit.gameObject.SetActive(true);
 
+            AttachJoint(_movingUnit.gameObject, targetCollider);
+
             if (_movingUnit.Data.placeSound != null) AudioSource.PlayClipAtPoint(_movingUnit.Data.placeSound, position);
 
             _movingUnit = null;
             ghostBuilder.DestroyGhost();
             // Stay in Move mode for next pickup
+        }
+
+        private void AttachJoint(GameObject structureObj, Collider targetCollider)
+        {
+            Rigidbody newRb = structureObj.GetComponent<Rigidbody>();
+            if (newRb == null) return;
+
+            // Remove existing joints just to be safe
+            Joint[] existingJoints = structureObj.GetComponents<Joint>();
+            foreach (var j in existingJoints) Destroy(j);
+
+            FixedJoint fixedJoint = structureObj.AddComponent<FixedJoint>();
+
+            if (targetCollider != null)
+            {
+                Rigidbody targetRb = targetCollider.GetComponentInParent<Rigidbody>();
+                // if targetRb is null, it connects to the world (static) which is usually what we want for ground.
+                fixedJoint.connectedBody = targetRb;
+            }
         }
 
         private void CancelCurrentMove()

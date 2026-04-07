@@ -66,6 +66,9 @@ namespace Simulation.Physics
         private Collider[] _colliders;
         private bool _isBroken;
 
+        // Tracks collision forces (e.g. weight of objects above)
+        private float _currentCollisionForceSum;
+
         // Recovery cooldown timer — counts how long stress has been below thresholds
         private float _lowStressTimer;
 
@@ -150,20 +153,33 @@ namespace Simulation.Physics
             if (_isBroken) return;
             if (_joint == null)
             {
-                // Joint was destroyed externally — treat as break
-                Break();
-                return;
+                _joint = GetComponent<Joint>();
+                if (_joint == null)
+                {
+                    // Joint was destroyed externally or never added — treat as break
+                    Break();
+                    return;
+                }
             }
 
             // ── 1. Read forces from the joint ─────────────────────────
-            Vector3 force  = _joint.currentForce;
-            Vector3 torque = _joint.currentTorque;
+            float forceMag = 0f;
+            float torqueMag = 0f;
 
-            float forceMag  = force.magnitude;
-            float torqueMag = torque.magnitude;
+            if (_joint != null)
+            {
+                forceMag = _joint.currentForce.magnitude;
+                torqueMag = _joint.currentTorque.magnitude;
+            }
+
+            // Include collision forces (e.g. weight of stacked objects)
+            forceMag += _currentCollisionForceSum;
 
             LastForceMagnitude  = forceMag;
             LastTorqueMagnitude = torqueMag;
+
+            // Reset collision force for the next fixed update frame
+            _currentCollisionForceSum = 0f;
 
             // ── 2. Compute per-frame damage ───────────────────────────
             float dt = Time.fixedDeltaTime;
@@ -219,6 +235,14 @@ namespace Simulation.Physics
 
             // ── 6. Notify listeners ───────────────────────────────────
             OnHealthChanged?.Invoke(_currentHP, HealthRatio);
+        }
+
+        private void OnCollisionStay(Collision collision)
+        {
+            if (_isBroken) return;
+            // Accumulate impulses for this FixedUpdate step.
+            // collision.impulse is the total impulse applied per contact pair. Force = impulse / dt.
+            _currentCollisionForceSum += (collision.impulse.magnitude / Time.fixedDeltaTime);
         }
 
         // ────────────────────────────────────────────────────────────────

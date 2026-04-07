@@ -263,7 +263,7 @@ MonoBehaviour:
   stressRenderer: {fileID: 0}
   normalColor: {r: 1, g: 1, b: 1, a: 1}
   stressColor: {r: 1, g: 0, b: 0, a: 1}
-  showDebugLogs: 0
+  showDebugLogs: 1
 --- !u!114 &156400033
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1928,7 +1928,7 @@ GameObject:
   - component: {fileID: 1898330699}
   - component: {fileID: 1898330698}
   - component: {fileID: 1898330702}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Plane
   m_TagString: Untagged
   m_Icon: {fileID: 0}
