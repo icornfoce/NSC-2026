@@ -21,6 +21,12 @@ namespace Simulation.Physics
             else Destroy(gameObject);
         }
 
+        private void Start()
+        {
+            // แช่แข็งฟิสิกส์เริ่มต้น (ไม่ให้ชิ้นส่วนที่อยู่ในฉากแต่แรกร่วงลงมา)
+            FreezeAllStructures();
+        }
+
         /// <summary>
         /// ใช้ฟังก์ชันนี้ใส่ในปุ่ม OnClick() เพื่อเริ่มการจำลอง
         /// </summary>
@@ -61,14 +67,18 @@ namespace Simulation.Physics
             else StartSimulation();
         }
 
-        /// <summary>
-        /// ปุ่มหยุดจำลอง (ตอนนี้จะเป็นแค่การแช่แข็งฟิสิกส์ ในอนาคตสามารถพัฒนาให้โหลดคืนค่าชิ้นส่วนก่อนเริ่มได้)
-        /// </summary>
         public void StopSimulation()
         {
             if (!isSimulating) return;
             isSimulating = false;
 
+            FreezeAllStructures();
+
+            Debug.Log("<color=red>■ Stop Simulation</color> - Physics frozen.");
+        }
+
+        private void FreezeAllStructures()
+        {
             StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
             foreach (var unit in units)
             {
@@ -81,8 +91,6 @@ namespace Simulation.Physics
                     rb.angularVelocity = Vector3.zero;
                 }
             }
-
-            Debug.Log("<color=red>■ Stop Simulation</color> - Physics frozen.");
         }
     }
 }

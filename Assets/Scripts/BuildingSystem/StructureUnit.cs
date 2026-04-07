@@ -28,6 +28,13 @@ namespace Simulation.Building
             _currentHP = data.baseHP;
             _rotation = rotation;
             CacheRenderers();
+
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
+                rb.isKinematic = !isSimulating;
+            }
         }
 
         private void CacheRenderers()
