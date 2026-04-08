@@ -51,6 +51,15 @@ namespace Simulation.Building
             var existingUnit = _ghostObject.GetComponent<StructureUnit>();
             if (existingUnit != null) Destroy(existingUnit);
 
+            // Remove StructuralStress and Joints to prevent simulated breaking
+            var existingStress = _ghostObject.GetComponent<Simulation.Physics.StructuralStress>();
+            if (existingStress != null) Destroy(existingStress);
+
+            foreach (var existingJoint in _ghostObject.GetComponentsInChildren<Joint>())
+            {
+                Destroy(existingJoint);
+            }
+
             // Collect renderers and create transparent ghost materials
             _ghostRenderers.Clear();
             _ghostMaterials.Clear();

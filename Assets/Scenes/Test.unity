@@ -131,9 +131,7 @@ GameObject:
   - component: {fileID: 156400029}
   - component: {fileID: 156400028}
   - component: {fileID: 156400027}
-  - component: {fileID: 156400034}
   - component: {fileID: 156400031}
-  - component: {fileID: 156400032}
   - component: {fileID: 156400033}
   m_Layer: 5
   m_Name: Canvas
@@ -241,29 +239,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.UI.BuildUIController
   structureToBuild: {fileID: 11400000, guid: 8d1ff23b2954fd647acab440b9b3a416, type: 2}
---- !u!114 &156400032
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 156400025}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b737f2e38f8677346bd236268fa8b236, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::pyhis
-  baseHP: 100
-  forceThreshold: 50
-  forceDamageMultiplier: 0.1
-  torqueThreshold: 30
-  torqueDamageMultiplier: 0.05
-  recoveryRate: 10
-  recoveryCooldown: 0.5
-  stressRenderer: {fileID: 0}
-  normalColor: {r: 1, g: 1, b: 1, a: 1}
-  stressColor: {r: 1, g: 0, b: 0, a: 1}
-  showDebugLogs: 1
 --- !u!114 &156400033
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -277,33 +252,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Physics.SimulationManager
   isSimulating: 0
---- !u!54 &156400034
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 156400025}
-  serializedVersion: 5
-  m_Mass: 1
-  m_LinearDamping: 0
-  m_AngularDamping: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!1 &720023086
 GameObject:
   m_ObjectHideFlags: 0
@@ -1928,7 +1876,7 @@ GameObject:
   - component: {fileID: 1898330699}
   - component: {fileID: 1898330698}
   - component: {fileID: 1898330702}
-  m_Layer: 3
+  m_Layer: 0
   m_Name: Plane
   m_TagString: Untagged
   m_Icon: {fileID: 0}

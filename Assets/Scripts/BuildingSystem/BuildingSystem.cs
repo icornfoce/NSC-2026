@@ -40,6 +40,7 @@ namespace Simulation.Building
         // State
         private BuildMode _currentMode = BuildMode.Idle;
         private StructureData _selectedData;
+        private MaterialData _selectedMaterial;
         private List<StructureUnit> _placedStructures = new List<StructureUnit>();
         private StructureUnit _movingUnit;
         private StructureUnit _hoveredUnit;
@@ -173,7 +174,9 @@ namespace Simulation.Building
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
                 ghostBuilder.UpdatePosition(placePos);
 
-                bool canAfford = _currentBudget >= _selectedData.basePrice;
+                MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
+                float materialPrice = mat != null ? mat.priceModifier : 0f;
+                bool canAfford = _currentBudget >= (_selectedData.basePrice + materialPrice);
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
                 ghostBuilder.SetValid(canAfford && isClear);
             }
@@ -279,11 +282,21 @@ namespace Simulation.Building
             _currentMode = BuildMode.Deleting;
         }
 
+        public void SelectMaterial(MaterialData material)
+        {
+            _selectedMaterial = material;
+            if (_currentMode == BuildMode.Placing && ghostBuilder.HasGhost)
+            {
+                // Optionally update ghost appearance?
+            }
+        }
+
         public void ExitMode()
         {
             if (_movingUnit != null) _movingUnit.gameObject.SetActive(true);
             _movingUnit = null;
             _selectedData = null;
+            _selectedMaterial = null;
             _currentMode = BuildMode.Idle;
             ghostBuilder.DestroyGhost();
             ClearHover();
@@ -295,7 +308,10 @@ namespace Simulation.Building
 
         private void PlaceStructure(Vector3 position, float rotation, Collider targetCollider = null)
         {
-            _currentBudget -= _selectedData.basePrice;
+            MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
+            float materialPrice = mat != null ? mat.priceModifier : 0f;
+            
+            _currentBudget -= (_selectedData.basePrice + materialPrice);
 
             GameObject obj = Instantiate(_selectedData.prefab, position, Quaternion.Euler(0, rotation, 0));
             SetLayerRecursively(obj, structureLayer);
@@ -304,14 +320,17 @@ namespace Simulation.Building
             obj.name = $"{_selectedData.prefab.name} {GetGridPositionString(position)}";
 
             StructureUnit unit = obj.GetComponent<StructureUnit>() ?? obj.AddComponent<StructureUnit>();
-            unit.Initialize(_selectedData, rotation);
+            unit.Initialize(_selectedData, mat, rotation);
 
             AttachJoint(obj, targetCollider);
 
             _placedStructures.Add(unit);
 
-            if (_selectedData.placeSound != null) AudioSource.PlayClipAtPoint(_selectedData.placeSound, position);
-            if (_selectedData.placeVFX != null) Instantiate(_selectedData.placeVFX, position, Quaternion.identity);
+            if (mat != null)
+            {
+                if (mat.placeSound != null) AudioSource.PlayClipAtPoint(mat.placeSound, position);
+                if (mat.placeVFX != null) Instantiate(mat.placeVFX, position, Quaternion.identity);
+            }
         }
 
         private void ConfirmMove(Vector3 position, float rotation, Collider targetCollider = null)
@@ -327,7 +346,8 @@ namespace Simulation.Building
 
             AttachJoint(_movingUnit.gameObject, targetCollider);
 
-            if (_movingUnit.Data.placeSound != null) AudioSource.PlayClipAtPoint(_movingUnit.Data.placeSound, position);
+            if (_movingUnit.CurrentMaterial != null && _movingUnit.CurrentMaterial.placeSound != null) 
+                AudioSource.PlayClipAtPoint(_movingUnit.CurrentMaterial.placeSound, position);
 
             _movingUnit = null;
             ghostBuilder.DestroyGhost();
@@ -362,9 +382,9 @@ namespace Simulation.Building
 
         private void TrySellStructure(StructureUnit unit)
         {
-            _currentBudget += unit.Data.basePrice;
+            float materialPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
+            _currentBudget += (unit.Data.basePrice + materialPrice);
             _placedStructures.Remove(unit);
-            if (unit.Data.breakSound != null) AudioSource.PlayClipAtPoint(unit.Data.breakSound, unit.transform.position);
             unit.DestroyStructure();
         }
 

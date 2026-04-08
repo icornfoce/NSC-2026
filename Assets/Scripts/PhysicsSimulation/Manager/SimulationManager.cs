@@ -87,7 +87,7 @@ namespace Simulation.Physics
                 {
                     // แช่แข็งโครงสร้าง
                     rb.isKinematic = true;
-                    rb.velocity = Vector3.zero;
+                    rb.linearVelocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
                 }
             }

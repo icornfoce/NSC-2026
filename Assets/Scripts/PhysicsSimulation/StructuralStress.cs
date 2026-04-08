@@ -118,13 +118,7 @@ namespace Simulation.Physics
             _colliders = GetComponentsInChildren<Collider>();
             _joint = GetComponent<Joint>();
 
-            // Try to pull baseHP from an existing StructureUnit → StructureData
-            var unit = GetComponent<Building.StructureUnit>();
-            if (unit != null && unit.Data != null && unit.Data.baseHP > 0f)
-            {
-                baseHP = unit.Data.baseHP;
-            }
-
+            // Base HP will be set by StructureUnit's InitializeStress later
             _currentHP = baseHP;
 
             // Cache stress renderer
@@ -292,16 +286,16 @@ namespace Simulation.Physics
 
             // 4. Play break effects via StructureUnit if available
             var unit = GetComponent<Building.StructureUnit>();
-            if (unit != null && unit.Data != null)
+            if (unit != null && unit.CurrentMaterial != null)
             {
-                if (unit.Data.breakSound != null)
+                if (unit.CurrentMaterial.breakSound != null)
                 {
-                    AudioSource.PlayClipAtPoint(unit.Data.breakSound, transform.position);
+                    AudioSource.PlayClipAtPoint(unit.CurrentMaterial.breakSound, transform.position);
                 }
 
-                if (unit.Data.breakVFX != null)
+                if (unit.CurrentMaterial.breakVFX != null)
                 {
-                    Instantiate(unit.Data.breakVFX, transform.position, Quaternion.identity);
+                    Instantiate(unit.CurrentMaterial.breakVFX, transform.position, Quaternion.identity);
                 }
             }
 
@@ -344,6 +338,13 @@ namespace Simulation.Physics
                 _currentHP = 0f;
                 Break();
             }
+        }
+
+        public void InitializeStress(float maxHP)
+        {
+            baseHP = maxHP;
+            _currentHP = maxHP;
+            UpdateVisualStress();
         }
 
         /// <summary>

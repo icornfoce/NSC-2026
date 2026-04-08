@@ -7,6 +7,8 @@ namespace Simulation.Building
     public class StructureUnit : MonoBehaviour
     {
         [SerializeField] private StructureData data;
+        [SerializeField] private MaterialData currentMaterial;
+        
         private float _currentHP;
         private float _rotation;
 
@@ -19,15 +21,28 @@ namespace Simulation.Building
         [SerializeField] private Color highlightColor = new Color(1f, 1f, 0.5f, 1f);
 
         public StructureData Data => data;
+        public MaterialData CurrentMaterial => currentMaterial;
         public float CurrentHP => _currentHP;
         public float Rotation => _rotation;
 
-        public void Initialize(StructureData structureData, float rotation = 0f)
+        public void Initialize(StructureData structureData, MaterialData materialData, float rotation = 0f)
         {
             data = structureData;
-            _currentHP = data.baseHP;
+            currentMaterial = materialData;
+
+            // HP = Base + Modifier
+            float maxHP = data.baseHP + (currentMaterial != null ? currentMaterial.hpModifier : 0f);
+            _currentHP = maxHP;
+
             _rotation = rotation;
             CacheRenderers();
+            ApplyMaterial();
+
+            var stress = GetComponent<Simulation.Physics.StructuralStress>();
+            if (stress != null)
+            {
+                stress.InitializeStress(maxHP);
+            }
 
             Rigidbody rb = GetComponent<Rigidbody>();
             if (rb != null)
@@ -47,6 +62,30 @@ namespace Simulation.Building
                 _renderers.Add(rend);
                 _originalColors.Add(rend.material.color);
             }
+        }
+
+        public void ApplyMaterial()
+        {
+            if (currentMaterial == null || currentMaterial.material == null) return;
+
+            foreach (var rend in _renderers)
+            {
+                if (rend == null) continue;
+                rend.material = currentMaterial.material;
+            }
+
+            // Update original colors for highlight system
+            _originalColors.Clear();
+            foreach (var rend in _renderers)
+            {
+                _originalColors.Add(rend.material.color);
+            }
+        }
+
+        public void ChangeMaterial(MaterialData newMaterial)
+        {
+            currentMaterial = newMaterial;
+            ApplyMaterial();
         }
 
         public void SetRotation(float newRotation)
@@ -90,9 +129,10 @@ namespace Simulation.Building
 
         public void DestroyStructure()
         {
-            if (data.breakVFX != null)
+            if (currentMaterial != null)
             {
-                Instantiate(data.breakVFX, transform.position, Quaternion.identity);
+                if (currentMaterial.breakSound != null) AudioSource.PlayClipAtPoint(currentMaterial.breakSound, transform.position);
+                if (currentMaterial.breakVFX != null) Instantiate(currentMaterial.breakVFX, transform.position, Quaternion.identity);
             }
 
             Destroy(gameObject);

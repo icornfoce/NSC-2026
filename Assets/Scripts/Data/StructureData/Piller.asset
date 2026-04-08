@@ -18,7 +18,4 @@ MonoBehaviour:
   baseHP: 100
   size: {x: 1, y: 4, z: 1}
   prefab: {fileID: 1485735910728036044, guid: 4307e4e1576720c4aac09cda4d41f683, type: 3}
-  placeSound: {fileID: 0}
-  breakSound: {fileID: 0}
-  placeVFX: {fileID: 0}
-  breakVFX: {fileID: 0}
+  defaultMaterial: {fileID: 0}
