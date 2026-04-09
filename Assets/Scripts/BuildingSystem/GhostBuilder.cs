@@ -31,7 +31,8 @@ namespace Simulation.Building
         {
             DestroyGhost();
 
-            _ghostObject = Instantiate(prefab);
+            // Instantiate at default world rotation so it matches the placed object
+            _ghostObject = Instantiate(prefab, Vector3.zero, Quaternion.identity);
             _ghostObject.name = "Ghost_Preview";
             _currentRotation = 0f;
 

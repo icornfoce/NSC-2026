@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
-  m_Name: Piller
+  m_Name: Wall
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
-  structureName: 
-  basePrice: 80
+  structureName: Wall
+  basePrice: 100
   baseMass: 50
   baseHP: 100
-  size: {x: 1, y: 4, z: 1}
+  size: {x: 0.1, y: 4, z: 4}
   allowOverlap: 0
-  prefab: {fileID: 1485735910728036044, guid: 4307e4e1576720c4aac09cda4d41f683, type: 3}
+  prefab: {fileID: 2622945852013538623, guid: 70003fbe292dfc347b44141495e35488, type: 3}
   defaultMaterial: {fileID: 0}

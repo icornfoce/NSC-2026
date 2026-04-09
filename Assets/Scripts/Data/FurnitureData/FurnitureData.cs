@@ -10,7 +10,9 @@ namespace Simulation.Data
         public float Price;
         public float Mass;
         public float HP;
-        public Vector3Int size = Vector3Int.one;
+        public Vector3 size = Vector3.one;
+        [Tooltip("If true, this furniture can overlap with others")]
+        public bool allowOverlap = false;
 
         [Header("Assets")]
         public GameObject prefab;

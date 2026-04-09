@@ -16,6 +16,7 @@ MonoBehaviour:
   basePrice: 100
   baseMass: 100
   baseHP: 100
-  size: {x: 5, y: 1, z: 5}
+  size: {x: 5, y: 0.1, z: 5}
+  allowOverlap: 0
   prefab: {fileID: 4189080343208526920, guid: a8f7eb34f959c4d4d989f0f46c92006e, type: 3}
   defaultMaterial: {fileID: 0}
