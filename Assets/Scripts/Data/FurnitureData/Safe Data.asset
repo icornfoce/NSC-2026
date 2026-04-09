@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37f7505c3a4af4049850cd8a417d692a, type: 3}
   m_Name: Safe Data
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.FurnitureData
-  furnitureName: Safe
-  Price: -200
-  Mass: 500
-  HP: 1000
+  furnitureName: 
+  Price: 0
+  Mass: 0
+  HP: 0
   size: {x: 3, y: 3, z: 3}
   prefab: {fileID: 0}
   defaultMaterial: {fileID: 0}
