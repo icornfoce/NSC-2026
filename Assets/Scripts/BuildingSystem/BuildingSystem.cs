@@ -325,6 +325,9 @@ namespace Simulation.Building
             AttachJoint(obj, targetCollider);
 
             _placedStructures.Add(unit);
+            
+            // Ignore collisions with deeply overlapping objects so they don't explode and lose HP
+            IgnoreOverlappingCollisions(unit);
 
             if (mat != null)
             {
@@ -345,6 +348,9 @@ namespace Simulation.Building
             _movingUnit.gameObject.SetActive(true);
 
             AttachJoint(_movingUnit.gameObject, targetCollider);
+            
+            // Re-eval ignoring collisions in new location
+            IgnoreOverlappingCollisions(_movingUnit);
 
             if (_movingUnit.CurrentMaterial != null && _movingUnit.CurrentMaterial.placeSound != null) 
                 AudioSource.PlayClipAtPoint(_movingUnit.CurrentMaterial.placeSound, position);
@@ -507,11 +513,8 @@ namespace Simulation.Building
         {
             if (data == null) return new Bounds(position, Vector3.zero);
 
-            float w = data.size.x * gridSize;
-            float h = data.size.y * heightStep;
-            float d = data.size.z * gridSize;
-
-            Vector3 extents = new Vector3(w * 0.5f, h * 0.5f, d * 0.5f);
+            (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(data.prefab);
+            Vector3 extents = localSize * 0.5f;
 
             // Swap X and Z for 90 or 270 degree rotations
             if (Mathf.Abs(rotation % 180f) > 45f)
@@ -519,10 +522,9 @@ namespace Simulation.Building
                 extents = new Vector3(extents.z, extents.y, extents.x);
             }
 
-            // Correctly derive bottom and map to the exact world space bounds center
-            float bottomY = position.y - GetPivotToBottomOffset(data.prefab);
-            Vector3 worldCenter = position;
-            worldCenter.y = bottomY + extents.y;
+            // Calculate world center using the exact calculated rotation
+            Quaternion globalRot = Quaternion.Euler(0, rotation, 0) * data.prefab.transform.rotation;
+            Vector3 worldCenter = position + (globalRot * localCenter);
 
             // Shrink by 5% so adjacent surfaces don't trigger overlap
             return new Bounds(worldCenter, extents * 1.9f); 
@@ -538,6 +540,28 @@ namespace Simulation.Building
             {
                 if (unit == _movingUnit || unit == null) continue;
 
+                // Check for exact duplicate placements regardless of allowOverlap
+                float dist = Vector3.Distance(position, unit.transform.position);
+                float rotDiff = Quaternion.Angle(Quaternion.Euler(0, rotation, 0), Quaternion.Euler(0, unit.Rotation, 0));
+                
+                if (dist < 0.1f && rotDiff < 1f)
+                {
+                    // Perfectly overlapping identical positions are never allowed
+                    return false; 
+                }
+
+                // If they are DIFFERENT structural types, we allow them to overlap!
+                if (structureData != unit.Data)
+                {
+                    continue;
+                }
+
+                // If both allow overlap and are the same type, skip
+                if (structureData.allowOverlap || (unit.Data != null && unit.Data.allowOverlap)) 
+                {
+                    continue;
+                }
+
                 Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
 
                 if (boundsA.Intersects(boundsB))
@@ -547,6 +571,37 @@ namespace Simulation.Building
             }
 
             return true;
+        }
+
+        private void IgnoreOverlappingCollisions(StructureUnit newUnit)
+        {
+            if (newUnit == null || newUnit.Data == null || newUnit.Data.prefab == null) return;
+            
+            Collider[] myColliders = newUnit.GetComponentsInChildren<Collider>(true);
+            if (myColliders.Length == 0) return;
+
+            (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(newUnit.Data.prefab);
+            
+            // Use 40% of the size (0.4f halfExtents) to find DEEPLY penetrating colliders
+            // By making it smaller than 0.5f, things that are just resting on top of each other won't be ignored
+            Vector3 halfExtents = localSize * 0.40f; 
+            
+            Quaternion rot = Quaternion.Euler(0, newUnit.Rotation, 0) * newUnit.Data.prefab.transform.rotation;
+            Vector3 worldCenter = newUnit.transform.position + rot * localCenter;
+
+            Collider[] hits = UnityEngine.Physics.OverlapBox(worldCenter, halfExtents, rot, structureLayer);
+
+            foreach (var hit in hits)
+            {
+                // Skip our own colliders
+                if (hit.transform.root == newUnit.transform.root) continue;
+
+                foreach (var col in myColliders)
+                {
+                    // Ignore physics collisions completely so they don't produce extreme repulsion forces & HP loss
+                    UnityEngine.Physics.IgnoreCollision(col, hit, true);
+                }
+            }
         }
     }
 }

@@ -10,7 +10,9 @@ namespace Simulation.Data
         public float basePrice;
         public float baseMass;
         public float baseHP;
-        public Vector3Int size = Vector3Int.one;
+        public Vector3 size = Vector3.one;
+        [Tooltip("If true, this structure can overlap with other structures (e.g. for walls)")]
+        public bool allowOverlap = false;
 
         [Header("Assets")]
         public GameObject prefab;

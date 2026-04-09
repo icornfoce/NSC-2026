@@ -131,6 +131,8 @@ namespace Simulation.Physics
 
         private void Start()
         {
+            if (_joint == null) _joint = GetComponent<Joint>();
+            
             if (_joint == null)
             {
                 Debug.LogWarning($"[StructuralStress] No Joint found on '{name}'. " +
