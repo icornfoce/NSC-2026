@@ -582,9 +582,14 @@ namespace Simulation.Building
 
             (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(newUnit.Data.prefab);
             
-            // Use 40% of the size (0.4f halfExtents) to find DEEPLY penetrating colliders
-            // By making it smaller than 0.5f, things that are just resting on top of each other won't be ignored
-            Vector3 halfExtents = localSize * 0.40f; 
+            // To deeply catch any horizontal overlap (including kissing corners) without ignoring the ground/ceiling:
+            // We use 55% for X/Z to cast a slightly wider net horizontally.
+            // We use 45% for Y to shrink it vertically, ensuring we don't accidentally ignore collisions with the floor it stands on.
+            Vector3 halfExtents = new Vector3(
+                localSize.x * 0.55f, 
+                localSize.y * 0.45f, 
+                localSize.z * 0.55f
+            );
             
             Quaternion rot = Quaternion.Euler(0, newUnit.Rotation, 0) * newUnit.Data.prefab.transform.rotation;
             Vector3 worldCenter = newUnit.transform.position + rot * localCenter;
