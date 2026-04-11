@@ -1,5 +1,6 @@
 ﻿<Solution>
   <Project Path="KinoBloom.Runtime.csproj" />
+  <Project Path="Assembly-CSharp-firstpass.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="CFXR.WelcomeScreen.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
