@@ -36,6 +36,8 @@ namespace Simulation.Building
         [Header("References")]
         [SerializeField] private UnityEngine.Camera mainCamera;
         [SerializeField] private GhostBuilder ghostBuilder;
+        // อ่าน OccludedColliders จาก CameraController เพื่อข้ามตอน Raycast
+        private Simulation.Camera.CameraController _cameraController;
 
         // State
         private BuildMode _currentMode = BuildMode.Idle;
@@ -69,6 +71,9 @@ namespace Simulation.Building
             _currentBudget = initialBudget;
             if (mainCamera == null) mainCamera = UnityEngine.Camera.main;
             if (ghostBuilder == null) ghostBuilder = GetComponent<GhostBuilder>();
+            // หา CameraController จากกล้องหลัก
+            if (mainCamera != null)
+                _cameraController = mainCamera.GetComponent<Simulation.Camera.CameraController>();
         }
 
         private void Update()
@@ -106,17 +111,26 @@ namespace Simulation.Building
 
             if (mainCamera == null) return;
 
-            // Combine masks to hit everything we can build on
             LayerMask combinedMask = groundLayer | structureLayer;
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-            if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, 500f, combinedMask))
+            // ใช้ RaycastAll แล้วเรียงจากใกล้ → ไกล
+            RaycastHit[] hits = UnityEngine.Physics.RaycastAll(ray, 500f, combinedMask);
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            // อ่านชุด occluded colliders จากกล้อง (ถ้ามี)
+            var occluded = _cameraController != null ? _cameraController.OccludedColliders : null;
+
+            foreach (var hit in hits)
             {
-                // If we hit our own ghost, ignore it? (Ghost was already set to ignore colliders)
-                _currentHitPos = hit.point;
-                _currentHitNormal = hit.normal;
+                // ข้าม collider ที่กล้องกำลังทำโปร่งใสอยู่
+                if (occluded != null && occluded.Contains(hit.collider)) continue;
+
+                _currentHitPos      = hit.point;
+                _currentHitNormal   = hit.normal;
                 _currentHitCollider = hit.collider;
-                _hasValidTarget = true;
+                _hasValidTarget     = true;
+                break; // เจอ hit แรกที่ไม่ถูกบัง → หยุด
             }
         }
 
