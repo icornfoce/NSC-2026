@@ -61,8 +61,19 @@ namespace Simulation.Camera
         private readonly Dictionary<Renderer, OccludedEntry> _occluded = new();
         private readonly HashSet<Collider> _occludedColliders = new();
 
-        /// <summary>Collider ที่กำลังถูกทำโปร่งใสเพราะบังกล้อง — BuildingSystem อ่านเพื่อข้าม</summary>
         public HashSet<Collider> OccludedColliders => _occludedColliders;
+
+        // ── Camera Shake ──
+        private float _shakeTimer;
+        private float _shakeIntensity;
+        private float _shakeDuration;
+
+        public void TriggerShake(float strength, float duration = 0.2f)
+        {
+            _shakeDuration = duration;
+            _shakeTimer = duration;
+            _shakeIntensity = strength;
+        }
 
         // ─────────────────────────────────────────────
 
@@ -119,6 +130,14 @@ namespace Simulation.Camera
 
             transform.position = pivotPoint + offset;
             transform.LookAt(pivotPoint);
+
+            // Apply Camera Shake AFTER LookAt 
+            if (_shakeTimer > 0f)
+            {
+                float shakeRatio = _shakeTimer / _shakeDuration;
+                transform.position += UnityEngine.Random.insideUnitSphere * _shakeIntensity * shakeRatio;
+                _shakeTimer -= Time.deltaTime;
+            }
         }
 
         // ─────────────────────────────────────────────

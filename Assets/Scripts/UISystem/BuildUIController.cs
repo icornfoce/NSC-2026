@@ -20,6 +20,30 @@ namespace Simulation.UI
         [Tooltip("ลากไฟล์ StructureData มาใส่ที่นี่ (ใช้เฉพาะตอนกด StartBuilding)")]
         public StructureData structureToBuild;
 
+        [Header("Material Settings")]
+        [Tooltip("นำไฟล์ Wood Data มาใส่ที่นี่เพื่อเป็นค่าเริ่มต้น")]
+        public MaterialData defaultWoodMaterial;
+
+        private void Start()
+        {
+            // เซ็ต Wood เป็นค่าเริ่มต้นตอนเริ่มเกม
+            if (defaultWoodMaterial != null && BuildingSystem.Instance != null)
+            {
+                BuildingSystem.Instance.SelectMaterial(defaultWoodMaterial);
+            }
+        }
+
+        /// <summary>
+        /// เปลี่ยน Material ปัจจุบันที่กำลังจะสร้าง (ใช้ลากใส่ปุ่ม OnClick)
+        /// </summary>
+        public void SelectMaterial(MaterialData materialData)
+        {
+            if (BuildingSystem.Instance != null && materialData != null)
+            {
+                BuildingSystem.Instance.SelectMaterial(materialData);
+            }
+        }
+
         /// <summary>
         /// เริ่มโหมดสร้าง — ต้องกำหนด structureToBuild ก่อน
         /// ใช้ลากใส่ OnClick() ของปุ่ม "สร้าง"
