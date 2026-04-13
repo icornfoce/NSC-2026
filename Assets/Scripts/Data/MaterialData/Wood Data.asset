@@ -16,8 +16,8 @@ MonoBehaviour:
   priceModifier: 0
   massModifier: 0
   hpModifier: 0
-  material: {fileID: 0}
-  placeSound: {fileID: 0}
-  breakSound: {fileID: 0}
-  placeVFX: {fileID: 0}
-  breakVFX: {fileID: 0}
+  material: {fileID: 2100000, guid: 677fc10578dc34c02b1ca157e90397c8, type: 2}
+  placeSound: {fileID: 8300000, guid: 582318aaecd729e4ba8ee969df67b7a8, type: 3}
+  breakSound: {fileID: 8300000, guid: 1ab14403f1320ca448b5ec1e5bec0839, type: 3}
+  placeVFX: {fileID: 6813416509558619124, guid: 3b7f2c753d435d647a80f1f047a113e3, type: 3}
+  breakVFX: {fileID: 8816989982806706927, guid: b5780b067ecdd9e47a20df3a28913e7f, type: 3}
