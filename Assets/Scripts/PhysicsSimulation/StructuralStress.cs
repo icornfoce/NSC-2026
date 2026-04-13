@@ -1,4 +1,5 @@
 using UnityEngine;
+using DG.Tweening;
 
 namespace Simulation.Physics
 {
@@ -50,8 +51,21 @@ namespace Simulation.Physics
         [Header("Visual Feedback (optional)")]
         [Tooltip("If assigned, material color lerps from normalColor → stressColor as HP decreases.")]
         [SerializeField] private Renderer stressRenderer;
-        [SerializeField] private Color normalColor = Color.white;
-        [SerializeField] private Color stressColor = Color.red;
+        [SerializeField] private Gradient stressGradient = new Gradient()
+        {
+            colorKeys = new GradientColorKey[]
+            {
+                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(Color.yellow, 0.33f),
+                new GradientColorKey(new Color(1f, 0.5f, 0f), 0.66f),
+                new GradientColorKey(Color.red, 1f)
+            },
+            alphaKeys = new GradientAlphaKey[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(1f, 1f)
+            }
+        };
 
         [Header("Debug")]
         [SerializeField] private bool showDebugLogs = false;
@@ -120,6 +134,12 @@ namespace Simulation.Physics
 
             // Base HP will be set by StructureUnit's InitializeStress later
             _currentHP = baseHP;
+
+            // พยายามดึง Renderer ในตัวเอง หรือตัวลูกมาใช้อัตโนมัติ หากยังไม่ได้ระบุ
+            if (stressRenderer == null)
+            {
+                stressRenderer = GetComponentInChildren<Renderer>();
+            }
 
             // Cache stress renderer
             _hasStressRenderer = stressRenderer != null;
@@ -241,6 +261,29 @@ namespace Simulation.Physics
             _currentCollisionForceSum += (collision.impulse.magnitude / Time.fixedDeltaTime);
         }
 
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (_isBroken) return;
+            
+            // คำนวณแรงตกกระทบ
+            float impactForce = collision.impulse.magnitude / Time.fixedDeltaTime;
+            
+            // ถ้าร่วงหล่นกระแทกพื้นแรงๆ (หรือของหล่นทับ) ให้กล้องสั่น
+            if (impactForce > forceThreshold * 2f) 
+            {
+                if (UnityEngine.Camera.main != null)
+                {
+                    // ทำให้สั่นตามความแรง แต่จำกัดสูงสุดไม่เกิน 0.5
+                    float shakeStrength = Mathf.Clamp(impactForce * 0.001f, 0.1f, 0.6f);
+                    var camCtrl = UnityEngine.Camera.main.GetComponent<Simulation.Camera.CameraController>();
+                    if (camCtrl != null)
+                    {
+                        camCtrl.TriggerShake(shakeStrength, 0.2f);
+                    }
+                }
+            }
+        }
+
         // ────────────────────────────────────────────────────────────────
         // Breaking Logic
         // ────────────────────────────────────────────────────────────────
@@ -316,9 +359,12 @@ namespace Simulation.Physics
         {
             if (!_hasStressRenderer || stressRenderer == null) return;
 
-            // Lerp from normalColor (full HP) → stressColor (0 HP)
             float t = 1f - HealthRatio;
-            stressRenderer.material.color = Color.Lerp(normalColor, stressColor, t);
+            
+            // เพื่อไม่ให้ไปทับสี Material ตั้งต้น (เช่น ไม้/เหล็ก)
+            // ถ้า t=0 จะใช้สีออริจินัล 100% และค่อยๆ เรืองสีตาม Gradient เมื่อมีแรงกด
+            Color stressC = stressGradient.Evaluate(t);
+            stressRenderer.material.color = Color.Lerp(_cachedOriginalColor, stressC, t);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -346,6 +392,13 @@ namespace Simulation.Physics
         {
             baseHP = maxHP;
             _currentHP = maxHP;
+            
+            // อัปเดตสีตั้งต้นใหม่ (เผื่อว่าเพิ่งโดนเปลี่ยน Material เป็นอันอื่นมา)
+            if (_hasStressRenderer && stressRenderer != null)
+            {
+                _cachedOriginalColor = stressRenderer.material.color;
+            }
+            
             UpdateVisualStress();
         }
 
