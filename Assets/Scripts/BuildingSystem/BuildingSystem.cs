@@ -422,21 +422,45 @@ namespace Simulation.Building
             if (_currentHitCollider != null)
             {
                 StructureUnit hitUnit = _currentHitCollider.GetComponentInParent<StructureUnit>();
-                if (hitUnit != null && hitUnit.Data != null)
+                if (hitUnit != null && hitUnit.Data != null && hitUnit.Data.prefab != null)
                 {
-                    // Size is from Data. Y stacking is exactly based on the unit's declared height!
-                    float occupiedHeight = hitUnit.Data.size.y * heightStep;
-                    float bottomY = hitUnit.transform.position.y - GetPivotToBottomOffset(hitUnit.Data.prefab);
-                    float topY = bottomY + occupiedHeight;
+                    // Use real prefab bounds for consistent Y calculation
+                    float hitUnitPivotToBottom = GetPivotToBottomOffset(hitUnit.Data.prefab);
+                    float hitUnitPivotToTop    = GetPivotToTopOffset(hitUnit.Data.prefab);
 
-                    y = topY;
+                    // bottomY = world Y of the bottom face of hitUnit
+                    float bottomY = hitUnit.transform.position.y - hitUnitPivotToBottom;
+                    // topY    = world Y of the top face of hitUnit
+                    float topY    = hitUnit.transform.position.y + hitUnitPivotToTop;
+
+                    if (hitUnit.Data.placementSinkThrough)
+                    {
+                        // Sink-through: start from the BOTTOM of the floor/slab
+                        // so placed wall shares the same ground level as walls on bare ground
+                        y = bottomY;
+                    }
+                    else
+                    {
+                        // Normal stacking: place on TOP of the hit structure
+                        y = topY;
+                    }
                 }
             }
 
-            // Pivot to Bottom offset
+            // Add pivot-to-bottom offset of the piece being placed so its bottom lands exactly at y
             y += _pivotToBottomOffset;
 
             return new Vector3(x, y, z);
+        }
+
+        /// <summary>
+        /// Distance from the prefab pivot to its TOP face (positive value).
+        /// </summary>
+        private float GetPivotToTopOffset(GameObject prefab)
+        {
+            (Vector3 center, Vector3 size) = GetPrefabBounds(prefab);
+            // top = center.y + size.y * 0.5f  →  offset from pivot = center.y + size.y * 0.5f
+            return center.y + size.y * 0.5f;
         }
 
         private void SetLayerRecursively(GameObject obj, LayerMask layerMask)
