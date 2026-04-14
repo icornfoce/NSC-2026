@@ -241,6 +241,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.UI.BuildUIController
   structureToBuild: {fileID: 11400000, guid: 84aee6cf8e1e9ff4ea9bb0a754c40a30, type: 2}
+  defaultWoodMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}
 --- !u!114 &156400033
 MonoBehaviour:
   m_ObjectHideFlags: 0
