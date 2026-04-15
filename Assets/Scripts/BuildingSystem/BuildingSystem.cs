@@ -191,7 +191,7 @@ namespace Simulation.Building
                 MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
                 float materialPrice = mat != null ? mat.priceModifier : 0f;
                 bool canAfford = _currentBudget >= (_selectedData.basePrice + materialPrice);
-                bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
+                bool isClear = IsAreaClear(placePos, _currentHitPos, ghostBuilder.CurrentRotation, _selectedData);
                 ghostBuilder.SetValid(canAfford && isClear);
             }
 
@@ -222,6 +222,13 @@ namespace Simulation.Building
             _movingUnit = unit;
             _movingUnit.gameObject.SetActive(false);
 
+            if (GridManager.Instance != null)
+            {
+                // Unregister the unit from its old grid position when picked up
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(_movingUnit.transform.position);
+                GridManager.Instance.UnregisterPlacement(gridPos, _movingUnit);
+            }
+
             // Initialize offset for the pickup
             _pivotToBottomOffset = GetPivotToBottomOffset(_movingUnit.Data.prefab);
             ghostBuilder.CreateGhost(_movingUnit.Data.prefab);
@@ -242,11 +249,11 @@ namespace Simulation.Building
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
                 ghostBuilder.UpdatePosition(placePos);
                 
-                bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
+                bool isClear = IsAreaClear(placePos, _currentHitPos, ghostBuilder.CurrentRotation, _movingUnit.Data);
                 ghostBuilder.SetValid(isClear);
             }
 
-            if (Input.GetMouseButtonDown(0) && _hasValidTarget)
+            if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
             {
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
                 ConfirmMove(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
@@ -340,6 +347,13 @@ namespace Simulation.Building
 
             _placedStructures.Add(unit);
             
+            if (GridManager.Instance != null)
+            {
+                // Register placement mathematically on the grid
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(position);
+                GridManager.Instance.RegisterPlacement(gridPos, unit);
+            }
+
             // Ignore collisions with deeply overlapping objects so they don't explode and lose HP
             IgnoreOverlappingCollisions(unit);
 
@@ -363,6 +377,12 @@ namespace Simulation.Building
 
             AttachJoint(_movingUnit.gameObject, targetCollider);
             
+            if (GridManager.Instance != null)
+            {
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(position);
+                GridManager.Instance.RegisterPlacement(gridPos, _movingUnit);
+            }
+
             // Re-eval ignoring collisions in new location
             IgnoreOverlappingCollisions(_movingUnit);
 
@@ -402,6 +422,12 @@ namespace Simulation.Building
 
         private void TrySellStructure(StructureUnit unit)
         {
+            if (GridManager.Instance != null)
+            {
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(unit.transform.position);
+                GridManager.Instance.UnregisterPlacement(gridPos, unit);
+            }
+
             float materialPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
             _currentBudget += (unit.Data.basePrice + materialPrice);
             _placedStructures.Remove(unit);
@@ -414,41 +440,69 @@ namespace Simulation.Building
 
         private Vector3 CalculatePlacementPosition(Vector3 hitPoint)
         {
-            float x = useGridSnap ? Mathf.Round(hitPoint.x / gridSize) * gridSize : hitPoint.x;
-            float z = useGridSnap ? Mathf.Round(hitPoint.z / gridSize) * gridSize : hitPoint.z;
+            if (GridManager.Instance == null) return hitPoint;
 
+            BuildType currentBuildType = BuildType.Object;
+            if (_selectedData != null) currentBuildType = _selectedData.buildType;
+            else if (_movingUnit != null && _movingUnit.Data != null) currentBuildType = _movingUnit.Data.buildType;
+
+            float x = hitPoint.x;
+            float z = hitPoint.z;
             float y = hitPoint.y;
 
-            if (_currentHitCollider != null)
+            if (currentBuildType == BuildType.Floor)
             {
-                StructureUnit hitUnit = _currentHitCollider.GetComponentInParent<StructureUnit>();
-                if (hitUnit != null && hitUnit.Data != null && hitUnit.Data.prefab != null)
+                // Floors MUST lock to the exact center of the grid cell
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(hitPoint);
+                Vector3 cellWorldPos = GridManager.Instance.GridToWorld(gridPos);
+                x = cellWorldPos.x;
+                y = cellWorldPos.y;
+                z = cellWorldPos.z;
+            }
+            else
+            {
+                // Non-floors can be placed freely on the floor, subject to optional grid snap setting
+                // Use half-grid snapping for walls/objects so they align to edges/corners perfectly.
+                float snapStep = (gridSize > 0 ? gridSize : 1f) * 0.5f; 
+                x = useGridSnap ? Mathf.Round(hitPoint.x / snapStep) * snapStep : hitPoint.x;
+                z = useGridSnap ? Mathf.Round(hitPoint.z / snapStep) * snapStep : hitPoint.z;
+
+                // Find a supporting floor near this x/z coordinate to get the exact Y height
+                float epsilon = 0.1f;
+                Vector3[] checks = { 
+                    new Vector3(x, hitPoint.y, z), 
+                    new Vector3(x + epsilon, hitPoint.y, z), 
+                    new Vector3(x - epsilon, hitPoint.y, z), 
+                    new Vector3(x, hitPoint.y, z + epsilon), 
+                    new Vector3(x, hitPoint.y, z - epsilon) 
+                };
+
+                bool foundFloor = false;
+                foreach(var checkPos in checks)
                 {
-                    // Use real prefab bounds for consistent Y calculation
-                    float hitUnitPivotToBottom = GetPivotToBottomOffset(hitUnit.Data.prefab);
-                    float hitUnitPivotToTop    = GetPivotToTopOffset(hitUnit.Data.prefab);
-
-                    // bottomY = world Y of the bottom face of hitUnit
-                    float bottomY = hitUnit.transform.position.y - hitUnitPivotToBottom;
-                    // topY    = world Y of the top face of hitUnit
-                    float topY    = hitUnit.transform.position.y + hitUnitPivotToTop;
-
-                    if (hitUnit.Data.placementSinkThrough)
+                    Vector3Int tryGrid = GridManager.Instance.WorldToGrid(checkPos);
+                    GridCell cell = GridManager.Instance.GetCell(tryGrid);
+                    if (cell != null && cell.HasFloor)
                     {
-                        // Sink-through: start from the BOTTOM of the floor/slab
-                        // so placed wall shares the same ground level as walls on bare ground
-                        y = bottomY;
+                        y = cell.Floor.transform.position.y + GetPivotToTopOffset(cell.Floor.Data.prefab);
+                        foundFloor = true;
+                        break;
                     }
-                    else
-                    {
-                        // Normal stacking: place on TOP of the hit structure
-                        y = topY;
-                    }
+                }
+
+                if (!foundFloor)
+                {
+                    // Fallback if no floor found (which generally means placement is rejected anyway)
+                    Vector3Int fallbackGrid = GridManager.Instance.WorldToGrid(hitPoint);
+                    y = GridManager.Instance.GridToWorld(fallbackGrid).y;
                 }
             }
 
-            // Add pivot-to-bottom offset of the piece being placed so its bottom lands exactly at y
+            // Bring the bottom of the placed object precisely to 'y'
             y += _pivotToBottomOffset;
+
+            // Add exactly 1mm to break perfect mesh contact and stabilize PhysX
+            y += 0.001f;
 
             return new Vector3(x, y, z);
         }
@@ -459,7 +513,6 @@ namespace Simulation.Building
         private float GetPivotToTopOffset(GameObject prefab)
         {
             (Vector3 center, Vector3 size) = GetPrefabBounds(prefab);
-            // top = center.y + size.y * 0.5f  →  offset from pivot = center.y + size.y * 0.5f
             return center.y + size.y * 0.5f;
         }
 
@@ -490,10 +543,6 @@ namespace Simulation.Building
         private float GetPivotToBottomOffset(GameObject prefab)
         {
             (Vector3 center, Vector3 size) = GetPrefabBounds(prefab);
-            // Pivot to Bottom offset = - (center.y - size.y * 0.5) = size.y * 0.5 - center.y
-            // Wait, previous logic was -prefabBounds.min.y.
-            // min.y is center.y - size.y * 0.5f.
-            // So -min.y = -(center.y - size.y * 0.5f) = size.y * 0.5f - center.y.
             return (size.y * 0.5f) - center.y;
         }
 
@@ -501,50 +550,99 @@ namespace Simulation.Building
         {
             if (prefab == null) return (Vector3.zero, Vector3.one);
 
-            // Use BoxCollider if it exists for perfectly consistent size.
-            BoxCollider bc = prefab.GetComponentInChildren<BoxCollider>(true);
-            if (bc != null)
+            Bounds combinedLocalBounds = new Bounds();
+            bool initialized = false;
+
+            // 1. Check Colliders (Primary source for physics bounds)
+            Collider[] colliders = prefab.GetComponentsInChildren<Collider>(true);
+            foreach (var col in colliders)
             {
-                Vector3 center = bc.center;
-                // Scale center if the collider is on a scaled child object
-                if (bc.transform != prefab.transform)
+                Bounds localB;
+                if (col is BoxCollider bc) 
+                    localB = new Bounds(bc.center, bc.size);
+                else if (col is CapsuleCollider cc)
                 {
-                    center = Vector3.Scale(center, bc.transform.localScale) + bc.transform.localPosition;
+                    Vector3 capsuleSize = new Vector3(cc.radius * 2, cc.radius * 2, cc.radius * 2);
+                    if (cc.direction == 0) capsuleSize.x = cc.height;
+                    else if (cc.direction == 1) capsuleSize.y = cc.height;
+                    else capsuleSize.z = cc.height;
+                    localB = new Bounds(cc.center, capsuleSize);
                 }
-                Vector3 size = Vector3.Scale(bc.size, bc.transform.localScale);
-                return (center, size);
-            }
+                else if (col is SphereCollider sc)
+                    localB = new Bounds(sc.center, new Vector3(sc.radius * 2, sc.radius * 2, sc.radius * 2));
+                else if (col is MeshCollider mc && mc.sharedMesh != null) 
+                    localB = mc.sharedMesh.bounds;
+                else 
+                    localB = col.bounds; // Note: primitive bounds might be world-relative if called in specific contexts
 
-            Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) return (Vector3.zero, Vector3.one);
+                // Transform 8 corners into prefab-root local space to handle rotation/scale accurately
+                Vector3 min = localB.min;
+                Vector3 max = localB.max;
+                Vector3[] corners = {
+                    new Vector3(min.x, min.y, min.z), new Vector3(min.x, min.y, max.z),
+                    new Vector3(min.x, max.y, min.z), new Vector3(min.x, max.y, max.z),
+                    new Vector3(max.x, min.y, min.z), new Vector3(max.x, min.y, max.z),
+                    new Vector3(max.x, max.y, min.z), new Vector3(max.x, max.y, max.z)
+                };
 
-            Bounds prefabBounds = new Bounds(Vector3.zero, Vector3.zero);
-            bool boundsInitialized = false;
-
-            foreach (var r in renderers)
-            {
-                MeshFilter mf = r.GetComponent<MeshFilter>();
-                if (mf != null && mf.sharedMesh != null)
+                foreach (var corner in corners)
                 {
-                    Bounds localB = mf.sharedMesh.bounds;
-                    // Approximate its root-relative position
-                    localB.size = Vector3.Scale(localB.size, r.transform.localScale);
-                    localB.center = Vector3.Scale(localB.center, r.transform.localScale);
-                    localB.center += r.transform.localPosition;
+                    // To Local: Root <- World <- Child
+                    Vector3 worldPoint = col.transform.TransformPoint(corner);
+                    Vector3 localPoint = prefab.transform.InverseTransformPoint(worldPoint);
                     
-                    if (!boundsInitialized) { prefabBounds = localB; boundsInitialized = true; }
-                    else { prefabBounds.Encapsulate(localB); }
+                    if (!initialized) { combinedLocalBounds = new Bounds(localPoint, Vector3.zero); initialized = true; }
+                    else { combinedLocalBounds.Encapsulate(localPoint); }
                 }
             }
-            return (prefabBounds.center, prefabBounds.size);
+
+            // 2. Fallback to Renderers if no colliders were found
+            if (!initialized)
+            {
+                Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
+                foreach (var r in renderers)
+                {
+                    MeshFilter mf = r.GetComponent<MeshFilter>();
+                    if (mf == null || mf.sharedMesh == null) continue;
+
+                    Bounds localB = mf.sharedMesh.bounds;
+                    Vector3 min = localB.min;
+                    Vector3 max = localB.max;
+                    Vector3[] corners = {
+                        new Vector3(min.x, min.y, min.z), new Vector3(min.x, min.y, max.z),
+                        new Vector3(min.x, max.y, min.z), new Vector3(min.x, max.y, max.z),
+                        new Vector3(max.x, min.y, min.z), new Vector3(max.x, min.y, max.z),
+                        new Vector3(max.x, max.y, min.z), new Vector3(max.x, max.y, max.z)
+                    };
+
+                    foreach (var corner in corners)
+                    {
+                        Vector3 worldPoint = r.transform.TransformPoint(corner);
+                        Vector3 localPoint = prefab.transform.InverseTransformPoint(worldPoint);
+                        
+                        if (!initialized) { combinedLocalBounds = new Bounds(localPoint, Vector3.zero); initialized = true; }
+                        else { combinedLocalBounds.Encapsulate(localPoint); }
+                    }
+                }
+            }
+
+            if (!initialized) return (Vector3.zero, Vector3.one);
+
+            // [FIX] The combinedLocalBounds is in unscaled local space. We MUST multiply it by the prefab root's 
+            // localScale to get the true real-world offset that the object will occupy when instantiated.
+            Vector3 finalCenter = Vector3.Scale(combinedLocalBounds.center, prefab.transform.localScale);
+            Vector3 finalSize = Vector3.Scale(combinedLocalBounds.size, prefab.transform.localScale);
+
+            return (finalCenter, finalSize);
         }
 
         private string GetGridPositionString(Vector3 position)
         {
-            int gridX = Mathf.RoundToInt(position.x / (gridSize > 0 ? gridSize : 1f));
-            int gridY = Mathf.RoundToInt(position.y / (heightStep > 0 ? heightStep : 1f));
-            int gridZ = Mathf.RoundToInt(position.z / (gridSize > 0 ? gridSize : 1f));
-            return $"({gridX}, {gridY}, {gridZ})";
+            if (GridManager.Instance != null)
+            {
+                return GridManager.Instance.WorldToGrid(position).ToString();
+            }
+            return position.ToString();
         }
 
         private Bounds GetGridBounds(Vector3 position, float rotation, StructureData data)
@@ -564,48 +662,69 @@ namespace Simulation.Building
             Quaternion globalRot = Quaternion.Euler(0, rotation, 0) * data.prefab.transform.rotation;
             Vector3 worldCenter = position + (globalRot * localCenter);
 
-            // Shrink by 5% so adjacent surfaces don't trigger overlap
-            return new Bounds(worldCenter, extents * 1.9f); 
+            // Shrunk bounds by 15% (multiplier 1.7 instead of 2.0 or 1.9) to allow corners to touch perfectly!
+            return new Bounds(worldCenter, extents * 1.7f); 
         }
 
-        private bool IsAreaClear(Vector3 position, float rotation, StructureData structureData)
+        private bool IsAreaClear(Vector3 placePos, Vector3 hitPos, float rotation, StructureData structureData)
         {
-            if (structureData == null) return true;
+            if (GridManager.Instance == null || structureData == null) return true;
 
-            Bounds boundsA = GetGridBounds(position, rotation, structureData);
+            // 1. Check Floor Support (Grid)
+            if (structureData.buildType == BuildType.Floor)
+            {
+                Vector3Int gridPos = GridManager.Instance.WorldToGrid(hitPos);
+                if (!GridManager.Instance.CanPlaceObject(gridPos, structureData.buildType)) return false;
+            }
+            else
+            {
+                // Non-floors (Walls/Objects) can sit on edges. Evaluate using mathematically snapped placePos (not raw cursor hitPos)
+                // Use a check radius of half-a-grid to ensure if the Wall is on the exact boundary, it touches the supporting floor.
+                float epsilon = (gridSize > 0 ? gridSize : 1f) * 0.55f; 
+                
+                // Construct a base position that sits safely near the floor elevation
+                Vector3 basePos = new Vector3(placePos.x, hitPos.y, placePos.z);
+
+                Vector3[] checks = { 
+                    basePos,
+                    basePos + new Vector3(epsilon, 0, 0),
+                    basePos + new Vector3(-epsilon, 0, 0),
+                    basePos + new Vector3(0, 0, epsilon),
+                    basePos + new Vector3(0, 0, -epsilon)
+                };
+
+                bool hasSupport = false;
+                foreach(var checkPos in checks)
+                {
+                    Vector3Int tryGrid = GridManager.Instance.WorldToGrid(checkPos);
+                    if (GridManager.Instance.CanPlaceObject(tryGrid, structureData.buildType)) 
+                    {
+                        hasSupport = true;
+                        break;
+                    }
+                }
+                if (!hasSupport) return false;
+            }
+
+            // 2. Check Physical Overlaps (Bounding Box)
+            Bounds boundsA = GetGridBounds(placePos, rotation, structureData);
 
             foreach (var unit in _placedStructures)
             {
                 if (unit == _movingUnit || unit == null) continue;
 
-                // Check for exact duplicate placements regardless of allowOverlap
-                float dist = Vector3.Distance(position, unit.transform.position);
+                // Ensure same position/rotation perfectly overlapping duplicate prevention
+                float dist = Vector3.Distance(placePos, unit.transform.position);
                 float rotDiff = Quaternion.Angle(Quaternion.Euler(0, rotation, 0), Quaternion.Euler(0, unit.Rotation, 0));
                 
-                if (dist < 0.1f && rotDiff < 1f)
-                {
-                    // Perfectly overlapping identical positions are never allowed
-                    return false; 
-                }
+                if (dist < 0.1f && rotDiff < 1f && structureData == unit.Data) return false;
 
-                // If they are DIFFERENT structural types, we allow them to overlap!
-                if (structureData != unit.Data)
-                {
-                    continue;
-                }
-
-                // If both allow overlap and are the same type, skip
-                if (structureData.allowOverlap || (unit.Data != null && unit.Data.allowOverlap)) 
-                {
-                    continue;
-                }
+                // Permissive checks
+                if (structureData != unit.Data) continue;
 
                 Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
 
-                if (boundsA.Intersects(boundsB))
-                {
-                    return false;
-                }
+                if (boundsA.Intersects(boundsB)) return false;
             }
 
             return true;
