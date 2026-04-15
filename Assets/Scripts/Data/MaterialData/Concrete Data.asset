@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 460fbb420c916c14297fefabd89cb6fd, type: 3}
+  m_Name: Concrete Data
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.MaterialData
+  materialName: Concrete
+  priceModifier: 0
+  massModifier: 0
+  hpModifier: 0
+  material: {fileID: 2100000, guid: 6dfdc4648af2d43adb6c377c8486ef44, type: 2}
+  placeSound: {fileID: 8300000, guid: 2580ece696727004ebc5b1065962be50, type: 3}
+  breakSound: {fileID: 8300000, guid: 1ab14403f1320ca448b5ec1e5bec0839, type: 3}
+  placeVFX: {fileID: 6813416509558619124, guid: 3b7f2c753d435d647a80f1f047a113e3, type: 3}
+  breakVFX: {fileID: 8816989982806706927, guid: b5780b067ecdd9e47a20df3a28913e7f, type: 3}
