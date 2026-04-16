@@ -1374,6 +1374,94 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!1 &1131151977
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1131151981}
+  - component: {fileID: 1131151980}
+  - component: {fileID: 1131151979}
+  - component: {fileID: 1131151978}
+  m_Layer: 0
+  m_Name: Buildmanger
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1131151978
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1131151977}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f1af6dadddec0942b0f4d68827087b8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.GhostBuilder
+  validColor: {r: 0, g: 1, b: 0, a: 0.5}
+  invalidColor: {r: 1, g: 0, b: 0, a: 0.5}
+--- !u!114 &1131151979
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1131151977}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a81db5a346a70474ab76f0bc5a670dae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.BuildingSystem
+  useGridSnap: 1
+  gridSize: 1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 8
+  structureLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  currentLevel: 0
+  gridVisual: {fileID: 0}
+  initialBudget: 1e+14
+  mainCamera: {fileID: 948665663}
+  ghostBuilder: {fileID: 1131151978}
+--- !u!114 &1131151980
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1131151977}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f603010b9c7554c43bc7470cd4aebc89, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.GridManager
+  gridSize: 1
+  fallbackHeightStep: 1
+  levelHeightReference: {fileID: 0}
+--- !u!4 &1131151981
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1131151977}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1.62003, y: 0, z: 0.61121}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1359823003
 GameObject:
   m_ObjectHideFlags: 0
@@ -1959,7 +2047,8 @@ MonoBehaviour:
   structureLayer:
     serializedVersion: 2
     m_Bits: 64
-  heightStep: 0.5
+  currentLevel: 0
+  gridVisual: {fileID: 0}
   initialBudget: 10000
   mainCamera: {fileID: 948665663}
   ghostBuilder: {fileID: 1625897339}
@@ -2764,3 +2853,4 @@ SceneRoots:
   - {fileID: 1695399799}
   - {fileID: 156400030}
   - {fileID: 2133772145}
+  - {fileID: 1131151981}

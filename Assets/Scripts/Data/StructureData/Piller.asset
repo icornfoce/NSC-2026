@@ -17,6 +17,6 @@ MonoBehaviour:
   baseMass: 50
   baseHP: 100
   size: {x: 1, y: 4, z: 1}
-  allowOverlap: 0
+  buildType: 1
   prefab: {fileID: 1485735910728036044, guid: 4307e4e1576720c4aac09cda4d41f683, type: 3}
   defaultMaterial: {fileID: 0}
