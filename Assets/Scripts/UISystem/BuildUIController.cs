@@ -1,18 +1,23 @@
 using UnityEngine;
 using Simulation.Data;
 using Simulation.Building;
+using Simulation.Mission;
 
 namespace Simulation.UI
 {
     /// <summary>
     /// UI Controller สำหรับระบบ Building
     /// ลากสคริปต์นี้ใส่ปุ่ม แล้วเลือกฟังก์ชันที่ต้องการใน OnClick()
-    /// 
+    ///
     /// ฟังก์ชันที่ใช้ได้:
-    ///   - StartBuilding()  → เริ่มโหมดสร้าง (ต้องใส่ StructureData ในช่อง structureToBuild)
-    ///   - StartMoving()    → เริ่มโหมดเลื่อนของ (คลิกของในฉากเพื่อหยิบ)
-    ///   - StartDeleting()  → เริ่มโหมดลบ/ขาย (คลิกของในฉากเพื่อลบ)
-    ///   - Cancel()         → ยกเลิกโหมดปัจจุบัน กลับ Idle
+    ///   - StartBuilding()         → เริ่มโหมดสร้าง (ต้องใส่ StructureData ในช่อง structureToBuild)
+    ///   - StartBuildingWithData() → เริ่มโหมดสร้างพร้อมส่ง Data โดยตรง
+    ///   - StartMoving()           → เริ่มโหมดเลื่อนของ (Toggle)
+    ///   - StartDeleting()         → เริ่มโหมดลบ/ขาย (Toggle)
+    ///   - Cancel()                → ยกเลิกโหมดปัจจุบัน กลับ Idle
+    ///   - SelectMaterial()        → เปลี่ยน Material
+    ///
+    /// หมายเหตุ: ทุกโหมดสร้างจะถูกบล็อกอัตโนมัติเมื่อ MissionSystem อยู่ในโหมดจำลอง
     /// </summary>
     public class BuildUIController : MonoBehaviour
     {
@@ -33,67 +38,69 @@ namespace Simulation.UI
             }
         }
 
-        /// <summary>
-        /// เปลี่ยน Material ปัจจุบันที่กำลังจะสร้าง (ใช้ลากใส่ปุ่ม OnClick)
-        /// </summary>
-        public void SelectMaterial(MaterialData materialData)
-        {
-            if (BuildingSystem.Instance != null && materialData != null)
-            {
-                BuildingSystem.Instance.SelectMaterial(materialData);
-            }
-        }
+        // ── Guard ──────────────────────────────────────────────────────
 
         /// <summary>
-        /// เริ่มโหมดสร้าง — ต้องกำหนด structureToBuild ก่อน
-        /// ใช้ลากใส่ OnClick() ของปุ่ม "สร้าง"
+        /// Returns true only when the player is in the Building phase (or no MissionSystem exists).
+        /// Prevents interacting with structures during or after simulation.
         /// </summary>
+        private bool IsBuildingAllowed()
+        {
+            if (MissionSystem.Instance == null) return true;
+            return MissionSystem.Instance.Phase == MissionSystem.MissionPhase.Building;
+        }
+
+        // ── Actions ────────────────────────────────────────────────────
+
+        /// <summary>เปลี่ยน Material ปัจจุบัน (ใช้ลากใส่ปุ่ม OnClick)</summary>
+        public void SelectMaterial(MaterialData materialData)
+        {
+            if (!IsBuildingAllowed()) return;
+            if (BuildingSystem.Instance != null && materialData != null)
+                BuildingSystem.Instance.SelectMaterial(materialData);
+        }
+
+        /// <summary>เริ่มโหมดสร้าง — ใช้ structureToBuild ที่กำหนดใน Inspector</summary>
         public void StartBuilding()
         {
+            if (!IsBuildingAllowed()) return;
             if (BuildingSystem.Instance == null || structureToBuild == null) return;
             BuildingSystem.Instance.SelectStructure(structureToBuild);
         }
 
-        /// <summary>
-        /// เริ่มโหมดสร้าง — รับข้อมูลผ่าน Parameter (ใช้ในระบบ Inventory/Slot ได้)
-        /// </summary>
+        /// <summary>เริ่มโหมดสร้าง — รับ Data ผ่าน Parameter (ใช้กับ Inventory/Slot)</summary>
         public void StartBuildingWithData(StructureData data)
         {
+            if (!IsBuildingAllowed()) return;
             if (BuildingSystem.Instance == null || data == null) return;
             BuildingSystem.Instance.SelectStructure(data);
         }
 
-        /// <summary>
-        /// เริ่มโหมดเลื่อนของ — คลิกที่ของในฉากเพื่อหยิบขึ้นมาย้าย (Toggle)
-        /// </summary>
+        /// <summary>เริ่มโหมดเลื่อนของ (Toggle)</summary>
         public void StartMoving()
         {
+            if (!IsBuildingAllowed()) return;
             if (BuildingSystem.Instance == null) return;
 
-            // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
             if (BuildingSystem.Instance.CurrentMode == BuildingSystem.BuildMode.Moving)
                 BuildingSystem.Instance.ExitMode();
             else
                 BuildingSystem.Instance.EnterMoveMode();
         }
 
-        /// <summary>
-        /// เริ่มโหมดลบ/ขาย — คลิกที่ของในฉากเพื่อลบและได้เงินคืน (Toggle)
-        /// </summary>
+        /// <summary>เริ่มโหมดลบ/ขาย (Toggle)</summary>
         public void StartDeleting()
         {
+            if (!IsBuildingAllowed()) return;
             if (BuildingSystem.Instance == null) return;
 
-            // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
             if (BuildingSystem.Instance.CurrentMode == BuildingSystem.BuildMode.Deleting)
                 BuildingSystem.Instance.ExitMode();
             else
                 BuildingSystem.Instance.EnterDeleteMode();
         }
 
-        /// <summary>
-        /// ยกเลิกโหมดปัจจุบัน กลับสู่ Idle
-        /// </summary>
+        /// <summary>ยกเลิกโหมดปัจจุบัน กลับสู่ Idle</summary>
         public void Cancel()
         {
             if (BuildingSystem.Instance == null) return;

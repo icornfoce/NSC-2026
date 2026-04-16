@@ -26,8 +26,10 @@ namespace Simulation.Building
         [SerializeField] private LayerMask groundLayer;
         [SerializeField] private LayerMask structureLayer;
 
-        [Header("Height Settings")]
-        [SerializeField] private float heightStep = 0.5f;
+        [Header("Layer Level Settings")]
+        public int currentLevel = 0;
+        [Tooltip("The actual GameObject containing the grid renderer/mesh. It will be moved up/down based on the current level.")]
+        public Transform gridVisual;
 
         [Header("Budget")]
         [SerializeField] private float initialBudget = 1000f;
@@ -55,6 +57,7 @@ namespace Simulation.Building
         private bool _hasValidTarget;
 
         public float CurrentBudget => _currentBudget;
+        public float InitialBudget => initialBudget;
         public BuildMode CurrentMode => _currentMode;
         public bool IsPlacing => _currentMode == BuildMode.Placing;
         public bool IsMoving => _currentMode == BuildMode.Moving;
@@ -78,6 +81,8 @@ namespace Simulation.Building
 
         private void Update()
         {
+            HandleLevelNavigation();
+
             UpdateRaycast();
             HandleHoverHighlight();
 
@@ -97,6 +102,43 @@ namespace Simulation.Building
                     break;
                 default:
                     break;
+            }
+        }
+
+        // --------------------------------------------------------------------------------
+        // LEVEL NAVIGATION
+        // --------------------------------------------------------------------------------
+
+        private void HandleLevelNavigation()
+        {
+            if (Input.GetKeyDown(KeyCode.Q))
+            {
+                ChangeLevel(1);
+            }
+            else if (Input.GetKeyDown(KeyCode.E))
+            {
+                ChangeLevel(-1);
+            }
+        }
+
+        private void ChangeLevel(int delta)
+        {
+            currentLevel += delta;
+            currentLevel = Mathf.Max(0, currentLevel);
+            
+            float step = GridManager.Instance != null ? GridManager.Instance.CurrentHeightStep : 3f;
+            float newY = currentLevel * step;
+            
+            if (_cameraController != null)
+            {
+                Vector3 pivot = _cameraController.PivotPoint;
+                pivot.y = newY;
+                _cameraController.FocusOn(pivot);
+            }
+
+            if (gridVisual != null)
+            {
+                gridVisual.position = new Vector3(gridVisual.position.x, newY, gridVisual.position.z);
             }
         }
 
@@ -121,6 +163,7 @@ namespace Simulation.Building
             // อ่านชุด occluded colliders จากกล้อง (ถ้ามี)
             var occluded = _cameraController != null ? _cameraController.OccludedColliders : null;
 
+            bool foundPhysical = false;
             foreach (var hit in hits)
             {
                 // ข้าม collider ที่กล้องกำลังทำโปร่งใสอยู่
@@ -130,7 +173,24 @@ namespace Simulation.Building
                 _currentHitNormal   = hit.normal;
                 _currentHitCollider = hit.collider;
                 _hasValidTarget     = true;
+                foundPhysical = true;
                 break; // เจอ hit แรกที่ไม่ถูกบัง → หยุด
+            }
+
+            float targetY = currentLevel * (GridManager.Instance != null ? GridManager.Instance.CurrentHeightStep : 3f);
+            Plane levelPlane = new Plane(Vector3.up, new Vector3(0, targetY, 0));
+            
+            if (levelPlane.Raycast(ray, out float distance))
+            {
+                Vector3 planePoint = ray.GetPoint(distance);
+                
+                if (!foundPhysical || _currentHitPos.y < targetY - 0.1f)
+                {
+                    _currentHitPos = planePoint;
+                    _currentHitNormal = Vector3.up;
+                    _currentHitCollider = null;
+                    _hasValidTarget = true;
+                }
             }
         }
 
@@ -321,6 +381,40 @@ namespace Simulation.Building
             _currentMode = BuildMode.Idle;
             ghostBuilder.DestroyGhost();
             ClearHover();
+        }
+
+        /// <summary>
+        /// Override the current budget (called by MissionSystem when loading a mission).
+        /// Also updates the serialized initialBudget so Reset can restore it.
+        /// </summary>
+        public void SetBudget(float amount)
+        {
+            initialBudget = amount;
+            _currentBudget = amount;
+        }
+
+        /// <summary>
+        /// Destroy every placed structure and clear the grid.
+        /// Called by MissionSystem.ResetMission() for a full rebuild.
+        /// Budget is NOT restored here — caller is responsible for that.
+        /// </summary>
+        public void ResetAllStructures()
+        {
+            ExitMode();
+
+            // Destroy all placed GameObjects and clear the list
+            foreach (var unit in _placedStructures)
+            {
+                if (unit != null) Destroy(unit.gameObject);
+            }
+            _placedStructures.Clear();
+
+            // Clear the entire grid registry
+            if (GridManager.Instance != null)
+                GridManager.Instance.ClearAll();
+
+            // Restore budget
+            _currentBudget = initialBudget;
         }
 
         // --------------------------------------------------------------------------------
@@ -719,7 +813,9 @@ namespace Simulation.Building
                 
                 if (dist < 0.1f && rotDiff < 1f && structureData == unit.Data) return false;
 
-                // Permissive checks
+                // Permissive checks: Non-floors can overlap with anything (except exact duplicates handled above)
+                if (structureData.buildType != BuildType.Floor) continue;
+
                 if (structureData != unit.Data) continue;
 
                 Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
@@ -739,12 +835,12 @@ namespace Simulation.Building
 
             (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(newUnit.Data.prefab);
             
-            // To deeply catch any horizontal overlap (including kissing corners) without ignoring the ground/ceiling:
-            // We use 55% for X/Z to cast a slightly wider net horizontally.
-            // We use 45% for Y to shrink it vertically, ensuring we don't accidentally ignore collisions with the floor it stands on.
+            // To deeply catch any overlap (including kissing corners/edges and adjacent floors):
+            // We use 55% for all axes. By ignoring collision with the structural floor beneath/adjacent to it,
+            // we eliminate false collision impulses that would otherwise sum up and continuously damage edge walls.
             Vector3 halfExtents = new Vector3(
                 localSize.x * 0.55f, 
-                localSize.y * 0.45f, 
+                localSize.y * 0.55f, 
                 localSize.z * 0.55f
             );
             

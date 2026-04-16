@@ -48,6 +48,8 @@ namespace Simulation.Camera
         private float _currentDistance;
         private float _targetDistance;
 
+        public Vector3 PivotPoint => pivotPoint;
+
         // ── Occlusion tracking ──
         private class OccludedEntry
         {

@@ -10,7 +10,10 @@ namespace Simulation.Building
 
         [Header("Grid Settings")]
         public float gridSize = 1f;
-        public float heightStep = 1f; // How tall is one cell/floor?
+        public float fallbackHeightStep = 1f; // How tall is one cell/floor? fallback
+        public StructureData levelHeightReference; // Reference for the height unit
+
+        public float CurrentHeightStep => levelHeightReference != null ? levelHeightReference.size.y : fallbackHeightStep;
 
         private Dictionary<Vector3Int, GridCell> _grid = new Dictionary<Vector3Int, GridCell>();
 
@@ -23,7 +26,7 @@ namespace Simulation.Building
         public Vector3Int WorldToGrid(Vector3 worldPos)
         {
             int x = Mathf.RoundToInt(worldPos.x / (gridSize > 0 ? gridSize : 1f));
-            int y = Mathf.RoundToInt(worldPos.y / (heightStep > 0 ? heightStep : 1f));
+            int y = Mathf.RoundToInt(worldPos.y / (CurrentHeightStep > 0 ? CurrentHeightStep : 1f));
             int z = Mathf.RoundToInt(worldPos.z / (gridSize > 0 ? gridSize : 1f));
             return new Vector3Int(x, y, z);
         }
@@ -32,7 +35,7 @@ namespace Simulation.Building
         {
             return new Vector3(
                 gridPos.x * gridSize,
-                gridPos.y * heightStep,
+                gridPos.y * CurrentHeightStep,
                 gridPos.z * gridSize
             );
         }
@@ -104,6 +107,14 @@ namespace Simulation.Building
             {
                 _grid.Remove(gridPos);
             }
+        }
+
+        /// <summary>
+        /// Wipe every cell in the grid. Called by BuildingSystem.ResetAllStructures().
+        /// </summary>
+        public void ClearAll()
+        {
+            _grid.Clear();
         }
     }
 }
