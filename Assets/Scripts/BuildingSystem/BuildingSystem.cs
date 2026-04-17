@@ -81,6 +81,13 @@ namespace Simulation.Building
 
         private void Update()
         {
+            // NEW: If simulating, force exit mode and block all building logic
+            if (Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating)
+            {
+                if (_currentMode != BuildMode.Idle) ExitMode();
+                return;
+            }
+
             HandleLevelNavigation();
 
             UpdateRaycast();
@@ -536,7 +543,7 @@ namespace Simulation.Building
         {
             if (GridManager.Instance == null) return hitPoint;
 
-            BuildType currentBuildType = BuildType.Object;
+            BuildType currentBuildType = BuildType.Structure;
             if (_selectedData != null) currentBuildType = _selectedData.buildType;
             else if (_movingUnit != null && _movingUnit.Data != null) currentBuildType = _movingUnit.Data.buildType;
 
@@ -561,35 +568,9 @@ namespace Simulation.Building
                 x = useGridSnap ? Mathf.Round(hitPoint.x / snapStep) * snapStep : hitPoint.x;
                 z = useGridSnap ? Mathf.Round(hitPoint.z / snapStep) * snapStep : hitPoint.z;
 
-                // Find a supporting floor near this x/z coordinate to get the exact Y height
-                float epsilon = 0.1f;
-                Vector3[] checks = { 
-                    new Vector3(x, hitPoint.y, z), 
-                    new Vector3(x + epsilon, hitPoint.y, z), 
-                    new Vector3(x - epsilon, hitPoint.y, z), 
-                    new Vector3(x, hitPoint.y, z + epsilon), 
-                    new Vector3(x, hitPoint.y, z - epsilon) 
-                };
-
-                bool foundFloor = false;
-                foreach(var checkPos in checks)
-                {
-                    Vector3Int tryGrid = GridManager.Instance.WorldToGrid(checkPos);
-                    GridCell cell = GridManager.Instance.GetCell(tryGrid);
-                    if (cell != null && cell.HasFloor)
-                    {
-                        y = cell.Floor.transform.position.y + GetPivotToTopOffset(cell.Floor.Data.prefab);
-                        foundFloor = true;
-                        break;
-                    }
-                }
-
-                if (!foundFloor)
-                {
-                    // Fallback if no floor found (which generally means placement is rejected anyway)
-                    Vector3Int fallbackGrid = GridManager.Instance.WorldToGrid(hitPoint);
-                    y = GridManager.Instance.GridToWorld(fallbackGrid).y;
-                }
+                // Just use the exact surface height we hit (hitPoint.y perfectly matches the top of whatever structure component we aimed at)
+                // This naturally allows infinite stacking of Pillars or Walls on top of each other!
+                y = hitPoint.y;
             }
 
             // Bring the bottom of the placed object precisely to 'y'
@@ -756,51 +737,54 @@ namespace Simulation.Building
             Quaternion globalRot = Quaternion.Euler(0, rotation, 0) * data.prefab.transform.rotation;
             Vector3 worldCenter = position + (globalRot * localCenter);
 
-            // Shrunk bounds by 15% (multiplier 1.7 instead of 2.0 or 1.9) to allow corners to touch perfectly!
-            return new Bounds(worldCenter, extents * 1.7f); 
+            // Use 1.99f instead of 2.0f to represent 99.5% full size, 
+            // allowing models to barely touch faces without registering as a hard overlap overlap block
+            return new Bounds(worldCenter, extents * 1.99f); 
         }
 
         private bool IsAreaClear(Vector3 placePos, Vector3 hitPos, float rotation, StructureData structureData)
         {
-            if (GridManager.Instance == null || structureData == null) return true;
+            if (structureData == null) return true;
 
-            // 1. Check Floor Support (Grid)
-            if (structureData.buildType == BuildType.Floor)
+            // 1. Support Check (Structure must rest on something)
+            if (structureData.buildType != BuildType.Floor)
             {
-                Vector3Int gridPos = GridManager.Instance.WorldToGrid(hitPos);
-                if (!GridManager.Instance.CanPlaceObject(gridPos, structureData.buildType)) return false;
-            }
-            else
-            {
-                // Non-floors (Walls/Objects) can sit on edges. Evaluate using mathematically snapped placePos (not raw cursor hitPos)
-                // Use a check radius of half-a-grid to ensure if the Wall is on the exact boundary, it touches the supporting floor.
-                float epsilon = (gridSize > 0 ? gridSize : 1f) * 0.55f; 
+                Bounds bounds = GetGridBounds(placePos, rotation, structureData);
+                // หากล่องเช็คบริเวณ "ใต้ฐาน" ของ Structure
+                // โดยเล็งไปที่กึ่งกลางฐาน แผ่กล่องให้มีความหนาขึ้นป้องกันการคลาดเคลื่อนทางทศนิยม
+                Vector3 center = bounds.center - new Vector3(0, bounds.extents.y, 0);
+                Vector3 extents = bounds.extents;
                 
-                // Construct a base position that sits safely near the floor elevation
-                Vector3 basePos = new Vector3(placePos.x, hitPos.y, placePos.z);
+                // ลดขนาดแนวกว้างลงเล็กน้อยเพื่อไม่ให้เกินขอบฐาน แต่ให้หนาขึ้นในแนวตั้งเพื่อกวาดให้เจอ Collider ข้างล่างชัวร์ๆ
+                extents.x *= 0.8f;
+                extents.z *= 0.8f;
+                extents.y = 0.25f; // ตรวจจับตั้งแต่เหนือฐาน 25cm ทะลุลงไปใต้ฐาน 25cm
 
-                Vector3[] checks = { 
-                    basePos,
-                    basePos + new Vector3(epsilon, 0, 0),
-                    basePos + new Vector3(-epsilon, 0, 0),
-                    basePos + new Vector3(0, 0, epsilon),
-                    basePos + new Vector3(0, 0, -epsilon)
-                };
-
+                Collider[] supports = UnityEngine.Physics.OverlapBox(center, extents, Quaternion.identity, structureLayer | groundLayer);
                 bool hasSupport = false;
-                foreach(var checkPos in checks)
+
+                foreach (var sup in supports)
                 {
-                    Vector3Int tryGrid = GridManager.Instance.WorldToGrid(checkPos);
-                    if (GridManager.Instance.CanPlaceObject(tryGrid, structureData.buildType)) 
+                    if (_movingUnit != null && sup.transform.IsChildOf(_movingUnit.transform)) continue;
+                    
+                    StructureUnit hitUnit = sup.GetComponentInParent<StructureUnit>();
+                    // ถ้าโดนชนพื้นผิวทั่วไป หรือโดน StructureUnit ถือว่ามีการซัพพอร์ต
+                    if (hitUnit != null)
+                    {
+                        hasSupport = true;
+                        break;
+                    }
+                    else if (((1 << sup.gameObject.layer) & groundLayer) != 0)
                     {
                         hasSupport = true;
                         break;
                     }
                 }
+
                 if (!hasSupport) return false;
             }
 
-            // 2. Check Physical Overlaps (Bounding Box)
+            // 2. Object Overlap Check (Cannot sink into another)
             Bounds boundsA = GetGridBounds(placePos, rotation, structureData);
 
             foreach (var unit in _placedStructures)
@@ -813,14 +797,15 @@ namespace Simulation.Building
                 
                 if (dist < 0.1f && rotDiff < 1f && structureData == unit.Data) return false;
 
-                // Permissive checks: Non-floors can overlap with anything (except exact duplicates handled above)
-                if (structureData.buildType != BuildType.Floor) continue;
-
-                if (structureData != unit.Data) continue;
-
+                // Hard overlap check: objects cannot sink into each other
                 Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
+                // ลดขนาดการชนลงเล็กน้อยเพื่อยอมให้วางชิดกันหรือต่อกันได้พอดี
+                boundsB.Expand(-0.05f);
+                
+                Bounds testBoundsA = boundsA;
+                testBoundsA.Expand(-0.05f);
 
-                if (boundsA.Intersects(boundsB)) return false;
+                if (testBoundsA.Intersects(boundsB)) return false;
             }
 
             return true;

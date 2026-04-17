@@ -39,17 +39,26 @@ namespace Simulation.Building
             ApplyMaterial();
 
             var stress = GetComponent<Simulation.Physics.StructuralStress>();
-            if (stress != null)
+            if (stress == null)
             {
-                stress.InitializeStress(maxHP);
+                stress = gameObject.AddComponent<Simulation.Physics.StructuralStress>();
             }
+            stress.InitializeStress(maxHP, data.maxStress, data.forceTransferPercent);
 
             Rigidbody rb = GetComponent<Rigidbody>();
-            if (rb != null)
+            if (rb == null) rb = gameObject.AddComponent<Rigidbody>();
+            
+            if (data != null && data.baseMass > 0)
             {
-                bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
-                rb.isKinematic = !isSimulating;
+                rb.mass = data.baseMass;
             }
+            else
+            {
+                rb.mass = 10f; // Default mass if not specified
+            }
+            
+            bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
+            rb.isKinematic = !isSimulating;
         }
 
         private void CacheRenderers()

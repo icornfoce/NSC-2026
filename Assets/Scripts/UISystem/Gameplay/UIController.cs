@@ -1,7 +1,7 @@
 using UnityEngine;
 using Simulation.Data;
 using Simulation.Building;
-using Simulation.Mission;
+using Simulation.Physics;
 
 namespace Simulation.UI
 {
@@ -46,8 +46,8 @@ namespace Simulation.UI
         /// </summary>
         private bool IsBuildingAllowed()
         {
-            if (MissionSystem.Instance == null) return true;
-            return MissionSystem.Instance.Phase == MissionSystem.MissionPhase.Building;
+            if (SimulationManager.Instance == null) return true;
+            return !SimulationManager.Instance.IsSimulating;
         }
          
         // ── Actions ────────────────────────────────────────────────────
@@ -105,6 +105,24 @@ namespace Simulation.UI
         {
             if (BuildingSystem.Instance == null) return;
             BuildingSystem.Instance.ExitMode();
+        }
+
+        /// <summary>สลับโหมดฟิสิกส์ (Start/Stop Simulation)</summary>
+        public void ToggleSimulationButton()
+        {
+            if (SimulationManager.Instance != null)
+            {
+                SimulationManager.Instance.ToggleSimulation();
+            }
+        }
+
+        /// <summary>หยุดจำลองฟิสิกส์โดยเฉพาะ</summary>
+        public void StopSimulationButton()
+        {
+            if (SimulationManager.Instance != null)
+            {
+                SimulationManager.Instance.StopSimulation();
+            }
         }
     }
 }

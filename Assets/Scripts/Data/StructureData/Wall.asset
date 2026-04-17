@@ -13,10 +13,12 @@ MonoBehaviour:
   m_Name: Wall
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: Wall
-  basePrice: 100
-  baseMass: 50
+  basePrice: 0
+  baseMass: 200
   baseHP: 100
+  maxStress: 100
+  forceTransferPercent: 27.2
   size: {x: 0.1, y: 4, z: 4}
-  allowOverlap: 0
+  buildType: 1
   prefab: {fileID: 2622945852013538623, guid: 70003fbe292dfc347b44141495e35488, type: 3}
   defaultMaterial: {fileID: 0}

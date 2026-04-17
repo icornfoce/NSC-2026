@@ -47,6 +47,7 @@ namespace CodeWee.GridShader
 			public void Setup()
 			{
 			}
+			[System.Obsolete]
 			public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
 			{
 				var cmd = CommandBufferPool.Get(m_ProfilerTag);
@@ -55,7 +56,10 @@ namespace CodeWee.GridShader
 					context.ExecuteCommandBuffer(cmd);
 					cmd.Clear();
 					var drawSettings = CreateDrawingSettings(m_ShaderTag, ref renderingData, SortingCriteria.CommonTransparent);
-					context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref m_Filtering);
+					
+					RendererListParams rendererListParams = new RendererListParams(renderingData.cullResults, drawSettings, m_Filtering);
+					RendererList rendererList = context.CreateRendererList(ref rendererListParams);
+					cmd.DrawRendererList(rendererList);
 				}
 				context.ExecuteCommandBuffer(cmd);
 				CommandBufferPool.Release(cmd);

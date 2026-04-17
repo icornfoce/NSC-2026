@@ -69,14 +69,11 @@ namespace Simulation.Building
                 if (cell != null && cell.HasFloor) return false;
                 return true; 
             }
-            else if (buildType == BuildType.Wall || buildType == BuildType.Object)
+            else if (buildType == BuildType.Structure)
             {
-                // Must have a floor to place wall or object
+                // Must have a floor to place structure
                 if (cell == null || !cell.HasFloor) return false;
                 
-                // We REMOVED the strict 1-wall-per-cell limit.
-                // We rely on BuildingSystem's physical bounding box checks instead
-                // so walls/pillars can flexibly share corners.
                 return true;
             }
             
@@ -86,11 +83,10 @@ namespace Simulation.Building
         public void RegisterPlacement(Vector3Int gridPos, StructureUnit unit)
         {
             GridCell cell = GetOrCreateCell(gridPos);
-            BuildType type = unit.Data != null ? unit.Data.buildType : BuildType.Object;
+            BuildType type = unit.Data != null ? unit.Data.buildType : BuildType.Structure;
 
             if (type == BuildType.Floor) cell.Floor = unit;
-            else if (type == BuildType.Wall) cell.Wall = unit;
-            else if (type == BuildType.Object) cell.Object = unit;
+            else if (type == BuildType.Structure) cell.Structure = unit;
         }
 
         public void UnregisterPlacement(Vector3Int gridPos, StructureUnit unit)
@@ -99,11 +95,10 @@ namespace Simulation.Building
             if (cell == null) return;
 
             if (cell.Floor == unit) cell.Floor = null;
-            else if (cell.Wall == unit) cell.Wall = null;
-            else if (cell.Object == unit) cell.Object = null;
+            else if (cell.Structure == unit) cell.Structure = null;
             
             // Clean up empty cells
-            if (!cell.HasFloor && !cell.HasWall && !cell.HasObject)
+            if (!cell.HasFloor && !cell.HasStructure)
             {
                 _grid.Remove(gridPos);
             }

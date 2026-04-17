@@ -7,8 +7,7 @@ namespace Simulation.Building
         public Vector3Int Coordinates { get; private set; }
         
         public StructureUnit Floor { get; set; }
-        public StructureUnit Wall { get; set; }
-        public StructureUnit Object { get; set; }
+        public StructureUnit Structure { get; set; }
 
         public GridCell(Vector3Int coordinates)
         {
@@ -16,7 +15,6 @@ namespace Simulation.Building
         }
 
         public bool HasFloor => Floor != null;
-        public bool HasWall => Wall != null;
-        public bool HasObject => Object != null;
+        public bool HasStructure => Structure != null;
     }
 }

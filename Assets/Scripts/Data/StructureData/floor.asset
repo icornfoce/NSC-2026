@@ -14,9 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: Floor
   basePrice: 0
-  baseMass: 100
+  baseMass: 200
   baseHP: 100
+  maxStress: 100
+  forceTransferPercent: 40
   size: {x: 5, y: 0.1, z: 5}
-  buildType: 3
+  buildType: 1
   prefab: {fileID: 4189080343208526920, guid: a8f7eb34f959c4d4d989f0f46c92006e, type: 3}
   defaultMaterial: {fileID: 0}

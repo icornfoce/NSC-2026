@@ -131,8 +131,7 @@ GameObject:
   - component: {fileID: 156400029}
   - component: {fileID: 156400028}
   - component: {fileID: 156400027}
-  - component: {fileID: 156400031}
-  - component: {fileID: 156400033}
+  - component: {fileID: 156400035}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -217,8 +216,8 @@ RectTransform:
   m_Children:
   - {fileID: 855013048}
   - {fileID: 2016375822}
-  - {fileID: 582758162}
   - {fileID: 1359823004}
+  - {fileID: 582758162}
   - {fileID: 1377247848}
   - {fileID: 754502308}
   m_Father: {fileID: 0}
@@ -228,7 +227,7 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
---- !u!114 &156400031
+--- !u!114 &156400035
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -237,24 +236,112 @@ MonoBehaviour:
   m_GameObject: {fileID: 156400025}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fa02a38cd79312145abe748f43e004ff, type: 3}
+  m_Script: {fileID: 11500000, guid: df8773acbe968f844996090f3b92b15b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.UI.BuildUIController
   structureToBuild: {fileID: 11400000, guid: 84aee6cf8e1e9ff4ea9bb0a754c40a30, type: 2}
-  defaultWoodMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}
---- !u!114 &156400033
+  defaultWoodMaterial: {fileID: 11400000, guid: 8fc9aca87d147e343ac17575c0e9e97f, type: 2}
+--- !u!1 &292340123
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 292340128}
+  - component: {fileID: 292340127}
+  - component: {fileID: 292340126}
+  - component: {fileID: 292340125}
+  - component: {fileID: 292340124}
+  m_Layer: 0
+  m_Name: Manger
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &292340124
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 156400025}
+  m_GameObject: {fileID: 292340123}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c3f6ffd3a5da5d246853ce698223013d, type: 3}
+  m_Script: {fileID: 11500000, guid: fc7cf42a0ed55a847ba59b56e57910bc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Physics.SimulationManager
-  isSimulating: 0
+--- !u!114 &292340125
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292340123}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f603010b9c7554c43bc7470cd4aebc89, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.GridManager
+  gridSize: 1
+  fallbackHeightStep: 1
+  levelHeightReference: {fileID: 11400000, guid: 8d1ff23b2954fd647acab440b9b3a416, type: 2}
+--- !u!114 &292340126
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292340123}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f1af6dadddec0942b0f4d68827087b8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.GhostBuilder
+  validColor: {r: 0, g: 1, b: 0, a: 0.5}
+  invalidColor: {r: 1, g: 0, b: 0, a: 0.5}
+--- !u!114 &292340127
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292340123}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a81db5a346a70474ab76f0bc5a670dae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Building.BuildingSystem
+  useGridSnap: 1
+  gridSize: 1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  structureLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  currentLevel: 0
+  gridVisual: {fileID: 1695399799}
+  initialBudget: 1000
+  mainCamera: {fileID: 948665663}
+  ghostBuilder: {fileID: 292340126}
+--- !u!4 &292340128
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292340123}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 4.74737, y: 0, z: -1.23236}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &582758161
 GameObject:
   m_ObjectHideFlags: 0
@@ -338,7 +425,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 156400031}
+      - m_Target: {fileID: 156400035}
         m_TargetAssemblyTypeName: Simulation.UI.BuildUIController, Assembly-CSharp
         m_MethodName: StartBuildingWithData
         m_Mode: 2
@@ -1017,7 +1104,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 156400031}
+      - m_Target: {fileID: 156400035}
         m_TargetAssemblyTypeName: Simulation.UI.BuildUIController, Assembly-CSharp
         m_MethodName: StartBuildingWithData
         m_Mode: 2
@@ -1457,10 +1544,22 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 156400033}
-        m_TargetAssemblyTypeName: Simulation.Physics.SimulationManager, Assembly-CSharp
-        m_MethodName: StartSimulation
+      - m_Target: {fileID: 156400035}
+        m_TargetAssemblyTypeName: Simulation.UI.BuildUIController, Assembly-CSharp
+        m_MethodName: ToggleSimulationButton
         m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 156400035}
+        m_TargetAssemblyTypeName: Simulation.UI.BuildUIController, Assembly-CSharp
+        m_MethodName: StopCoroutine
+        m_Mode: 5
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
@@ -1959,7 +2058,8 @@ MonoBehaviour:
   structureLayer:
     serializedVersion: 2
     m_Bits: 64
-  heightStep: 0.5
+  currentLevel: 0
+  gridVisual: {fileID: 0}
   initialBudget: 10000
   mainCamera: {fileID: 948665663}
   ghostBuilder: {fileID: 1625897339}
@@ -2361,7 +2461,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 156400031}
+      - m_Target: {fileID: 156400035}
         m_TargetAssemblyTypeName: Simulation.UI.BuildUIController, Assembly-CSharp
         m_MethodName: StartBuildingWithData
         m_Mode: 2
@@ -2764,3 +2864,4 @@ SceneRoots:
   - {fileID: 1695399799}
   - {fileID: 156400030}
   - {fileID: 2133772145}
+  - {fileID: 292340128}

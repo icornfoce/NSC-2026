@@ -13,9 +13,11 @@ MonoBehaviour:
   m_Name: Piller
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: 
-  basePrice: 80
-  baseMass: 50
-  baseHP: 100
+  basePrice: 0
+  baseMass: 200
+  baseHP: 20
+  maxStress: 100
+  forceTransferPercent: 40
   size: {x: 1, y: 4, z: 1}
   buildType: 1
   prefab: {fileID: 1485735910728036044, guid: 4307e4e1576720c4aac09cda4d41f683, type: 3}
