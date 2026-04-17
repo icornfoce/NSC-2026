@@ -49,7 +49,7 @@ namespace Simulation.UI
             if (MissionSystem.Instance == null) return true;
             return MissionSystem.Instance.Phase == MissionSystem.MissionPhase.Building;
         }
-
+         
         // ── Actions ────────────────────────────────────────────────────
 
         /// <summary>เปลี่ยน Material ปัจจุบัน (ใช้ลากใส่ปุ่ม OnClick)</summary>
