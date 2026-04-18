@@ -49,7 +49,7 @@ namespace Simulation.UI
             if (SimulationManager.Instance == null) return true;
             return !SimulationManager.Instance.IsSimulating;
         }
-         
+
         // ── Actions ────────────────────────────────────────────────────
 
         /// <summary>เปลี่ยน Material ปัจจุบัน (ใช้ลากใส่ปุ่ม OnClick)</summary>
@@ -110,19 +110,24 @@ namespace Simulation.UI
         /// <summary>สลับโหมดฟิสิกส์ (Start/Stop Simulation)</summary>
         public void ToggleSimulationButton()
         {
-            if (SimulationManager.Instance != null)
+            if (SimulationManager.Instance == null)
             {
-                SimulationManager.Instance.ToggleSimulation();
+                Debug.LogError("[UIController] ToggleSimulationButton: SimulationManager.Instance is NULL! " +
+                               "ตรวจสอบว่า GameObject ที่ติด SimulationManager อยู่ใน Scene และ Awake ทำงานแล้ว", this);
+                return;
             }
+            SimulationManager.Instance.ToggleSimulation();
         }
 
         /// <summary>หยุดจำลองฟิสิกส์โดยเฉพาะ</summary>
         public void StopSimulationButton()
         {
-            if (SimulationManager.Instance != null)
+            if (SimulationManager.Instance == null)
             {
-                SimulationManager.Instance.StopSimulation();
+                Debug.LogError("[UIController] StopSimulationButton: SimulationManager.Instance is NULL!", this);
+                return;
             }
+            SimulationManager.Instance.StopSimulation();
         }
     }
 }
