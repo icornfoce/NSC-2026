@@ -5,12 +5,12 @@ using Simulation.Data;
 namespace Simulation.Building
 {
     /// <summary>
-    /// 3D Building System (Poly Bridge-style stacking).
-    /// - Place on ground or on top of existing structures
-    /// - Stacks upward infinitely
-    /// - Size comes from Prefab bounds (Pivot-aware)
-    /// - Ghost follows mouse smoothly
-    /// Modes: Idle, Placing, Moving, Deleting
+    /// ระบบก่อสร้างตึก 3D (Building System)
+    /// - วางชิ้นส่วนบนพื้นหรือซ้อนทับบนโครงสร้างเดิม
+    /// - รองรับการสร้างตึกสูง/ต่อเติมชั้น
+    /// - ขนาดอ้างอิงจาก Bounds ของ Prefab
+    /// - แสดง Ghost Preview ตามตำแหน่งเมาส์
+    /// โหมด: Idle, Placing, Moving, Deleting
     /// </summary>
     public class BuildingSystem : MonoBehaviour
     {
@@ -20,7 +20,7 @@ namespace Simulation.Building
 
         [Header("Grid Settings")]
         [SerializeField] private bool useGridSnap = true;
-        [SerializeField] private float gridSize = 1f;
+        [SerializeField] private float gridSize = 1f;  // fallback — ถ้ามี GridManager จะใช้ CurrentGridSize แทน
 
         [Header("Layer Masks")]
         [SerializeField] private LayerMask groundLayer;
@@ -46,6 +46,8 @@ namespace Simulation.Building
         private StructureData _selectedData;
         private MaterialData _selectedMaterial;
         private List<StructureUnit> _placedStructures = new List<StructureUnit>();
+        /// <summary>Read-only access for external systems (Physics, etc.)</summary>
+        public IReadOnlyList<StructureUnit> PlacedStructures => _placedStructures;
         private StructureUnit _movingUnit;
         private StructureUnit _hoveredUnit;
 
@@ -81,14 +83,15 @@ namespace Simulation.Building
 
         private void Update()
         {
-            // NEW: If simulating, force exit mode and block all building logic
+            // Q/E เปลี่ยนชั้นได้เสมอ แม้ขณะจำลอง
+            HandleLevelNavigation();
+
+            // ขณะจำลองอยู่ ปิดโหมดสร้างทั้งหมด แต่ยังดูได้
             if (Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating)
             {
                 if (_currentMode != BuildMode.Idle) ExitMode();
                 return;
             }
-
-            HandleLevelNavigation();
 
             UpdateRaycast();
             HandleHoverHighlight();
@@ -118,11 +121,11 @@ namespace Simulation.Building
 
         private void HandleLevelNavigation()
         {
-            if (Input.GetKeyDown(KeyCode.Q))
+            if (Input.GetKeyDown(KeyCode.E))
             {
                 ChangeLevel(1);
             }
-            else if (Input.GetKeyDown(KeyCode.E))
+            else if (Input.GetKeyDown(KeyCode.Q))
             {
                 ChangeLevel(-1);
             }
@@ -131,7 +134,10 @@ namespace Simulation.Building
         private void ChangeLevel(int delta)
         {
             currentLevel += delta;
-            currentLevel = Mathf.Max(0, currentLevel);
+
+            // จำกัดชั้น: ต่ำสุด 0, สูงสุด = ชั้นบนสุดที่มีของวางอยู่ + 1
+            int maxLevel = GetHighestOccupiedLevel() + 1;
+            currentLevel = Mathf.Clamp(currentLevel, 0, maxLevel);
             
             float step = GridManager.Instance != null ? GridManager.Instance.CurrentHeightStep : 3f;
             float newY = currentLevel * step;
@@ -147,6 +153,43 @@ namespace Simulation.Building
             {
                 gridVisual.position = new Vector3(gridVisual.position.x, newY, gridVisual.position.z);
             }
+        }
+
+        /// <summary>
+        /// คำนวณชั้นสูงสุดที่มีวัตถุวางอยู่ โดยอ้างอิงจาก Y position ของวัตถุทั้งหมด
+        /// </summary>
+        private int GetHighestOccupiedLevel()
+        {
+            if (_placedStructures.Count == 0) return 0;
+
+            float step = GridManager.Instance != null ? GridManager.Instance.CurrentHeightStep : 3f;
+            if (step <= 0f) step = 3f;
+
+            float highestY = 0f;
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == null) continue;
+                if (unit.transform.position.y > highestY)
+                    highestY = unit.transform.position.y;
+            }
+
+            return Mathf.FloorToInt(highestY / step);
+        }
+
+        // --------------------------------------------------------------------------------
+        // GRID VISUAL — ซ่อน/แสดง (เรียกจาก SimulationManager)
+        // --------------------------------------------------------------------------------
+
+        /// <summary>ซ่อน Grid Visual — เรียกตอนเริ่มจำลอง</summary>
+        public void HideGridVisual()
+        {
+            if (gridVisual != null) gridVisual.gameObject.SetActive(false);
+        }
+
+        /// <summary>แสดง Grid Visual — เรียกตอนหยุดจำลองหรือรีเซ็ต</summary>
+        public void ShowGridVisual()
+        {
+            if (gridVisual != null) gridVisual.gameObject.SetActive(true);
         }
 
         // --------------------------------------------------------------------------------
@@ -415,6 +458,7 @@ namespace Simulation.Building
                 if (unit != null) Destroy(unit.gameObject);
             }
             _placedStructures.Clear();
+            StructureRegistry.Clear();
 
             // Clear the entire grid registry
             if (GridManager.Instance != null)
@@ -447,6 +491,7 @@ namespace Simulation.Building
             AttachJoint(obj, targetCollider);
 
             _placedStructures.Add(unit);
+            StructureRegistry.Register(unit);
             
             if (GridManager.Instance != null)
             {
@@ -532,6 +577,7 @@ namespace Simulation.Building
             float materialPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
             _currentBudget += (unit.Data.basePrice + materialPrice);
             _placedStructures.Remove(unit);
+            StructureRegistry.Unregister(unit);
             unit.DestroyStructure();
         }
 
@@ -562,15 +608,41 @@ namespace Simulation.Building
             }
             else
             {
-                // Non-floors can be placed freely on the floor, subject to optional grid snap setting
-                // Use half-grid snapping for walls/objects so they align to edges/corners perfectly.
-                float snapStep = (gridSize > 0 ? gridSize : 1f) * 0.5f; 
+                // Non-floors: snap XZ to half-grid for edge/corner alignment
+                float gs = GridManager.Instance != null ? GridManager.Instance.CurrentGridSize : gridSize;
+                float snapStep = (gs > 0 ? gs : 1f) * 0.5f; 
                 x = useGridSnap ? Mathf.Round(hitPoint.x / snapStep) * snapStep : hitPoint.x;
                 z = useGridSnap ? Mathf.Round(hitPoint.z / snapStep) * snapStep : hitPoint.z;
 
-                // Just use the exact surface height we hit (hitPoint.y perfectly matches the top of whatever structure component we aimed at)
-                // This naturally allows infinite stacking of Pillars or Walls on top of each other!
-                y = hitPoint.y;
+                // [Fix 1] บังคับให้ Y สนิทกับพื้นระดับชั้น (ไม่ต้องกลัวมันลอยหรือยื่นออกจากขอบเมื่อเล็งผิด)
+                float hs = GridManager.Instance != null ? GridManager.Instance.CurrentHeightStep : 3f;
+                // ถ้าเป็นชั้น 0 ก็คือ 0, ชั้นถัดไปก็ความสูง 1 ชั้น
+                y = currentLevel * hs;
+
+                // Auto-Stack: ถ้ามี structure อยู่ที่จุดเดียวกัน (XZ) → วางซ้อนบนหัวอัตโนมัติ
+                StructureData currentData = _selectedData != null ? _selectedData : (_movingUnit != null ? _movingUnit.Data : null);
+                if (currentData != null)
+                {
+                    float tolerance = snapStep * 0.5f;
+                    float highestTop = y;
+
+                    foreach (var unit in _placedStructures)
+                    {
+                        if (unit == null || unit == _movingUnit) continue;
+                        
+                        float dx = Mathf.Abs(unit.transform.position.x - x);
+                        float dz = Mathf.Abs(unit.transform.position.z - z);
+                        
+                        if (dx < tolerance && dz < tolerance)
+                        {
+                            // หาจุดสูงสุดของ structure ที่อยู่ตำแหน่งเดียวกัน
+                            float topY = unit.transform.position.y + GetPivotToTopOffset(unit.Data.prefab);
+                            if (topY > highestTop)
+                                highestTop = topY;
+                        }
+                    }
+                    y = highestTop;
+                }
             }
 
             // Bring the bottom of the placed object precisely to 'y'
@@ -724,8 +796,22 @@ namespace Simulation.Building
         {
             if (data == null) return new Bounds(position, Vector3.zero);
 
-            (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(data.prefab);
-            Vector3 extents = localSize * 0.5f;
+            Vector3 extents;
+            Vector3 localCenter = Vector3.zero;
+
+            // [Fix 3] ถ้ามีการตั้งค่า size ใน Data (ไม่เป็น 1,1,1) ให้ใช้ size นั้นเป็นขนาดบล็อกเลยเพื่อความเป๊ะเวลาทับกัน
+            if (data.size != Vector3.one)
+            {
+                extents = data.size * 0.5f;
+                localCenter = new Vector3(0, extents.y, 0); // สมมติว่าจุดหมุนอยู่ฐาน
+            }
+            else
+            {
+                // ถ้าค่า default ให้คำนวณจาก prefab
+                Vector3 localSize;
+                (localCenter, localSize) = GetPrefabBounds(data.prefab);
+                extents = localSize * 0.5f;
+            }
 
             // Swap X and Z for 90 or 270 degree rotations
             if (Mathf.Abs(rotation % 180f) > 45f)
@@ -746,40 +832,24 @@ namespace Simulation.Building
         {
             if (structureData == null) return true;
 
-            // 1. Support Check (Structure must rest on something)
-            if (structureData.buildType != BuildType.Floor)
+            // 1. Support Check — ทุกชิ้นต้องมีฐานรองรับ (ห้ามลอย)
+            //    Floor ชั้น 0 วางได้เลย (อยู่บนพื้น), ชั้นสูงกว่าต้องมี support ข้างล่าง
+            bool isGroundFloor = (structureData.buildType == BuildType.Floor && currentLevel <= 0);
+
+            if (!isGroundFloor)
             {
                 Bounds bounds = GetGridBounds(placePos, rotation, structureData);
-                // หากล่องเช็คบริเวณ "ใต้ฐาน" ของ Structure
-                // โดยเล็งไปที่กึ่งกลางฐาน แผ่กล่องให้มีความหนาขึ้นป้องกันการคลาดเคลื่อนทางทศนิยม
+                // เช็คบริเวณ "ใต้ฐาน" ของ Structure
                 Vector3 center = bounds.center - new Vector3(0, bounds.extents.y, 0);
                 Vector3 extents = bounds.extents;
                 
-                // ลดขนาดแนวกว้างลงเล็กน้อยเพื่อไม่ให้เกินขอบฐาน แต่ให้หนาขึ้นในแนวตั้งเพื่อกวาดให้เจอ Collider ข้างล่างชัวร์ๆ
                 extents.x *= 0.8f;
                 extents.z *= 0.8f;
-                extents.y = 0.25f; // ตรวจจับตั้งแต่เหนือฐาน 25cm ทะลุลงไปใต้ฐาน 25cm
+                extents.y = 0.25f;
 
-                Collider[] supports = UnityEngine.Physics.OverlapBox(center, extents, Quaternion.identity, structureLayer | groundLayer);
-                bool hasSupport = false;
-
-                foreach (var sup in supports)
-                {
-                    if (_movingUnit != null && sup.transform.IsChildOf(_movingUnit.transform)) continue;
-                    
-                    StructureUnit hitUnit = sup.GetComponentInParent<StructureUnit>();
-                    // ถ้าโดนชนพื้นผิวทั่วไป หรือโดน StructureUnit ถือว่ามีการซัพพอร์ต
-                    if (hitUnit != null)
-                    {
-                        hasSupport = true;
-                        break;
-                    }
-                    else if (((1 << sup.gameObject.layer) & groundLayer) != 0)
-                    {
-                        hasSupport = true;
-                        break;
-                    }
-                }
+                Transform selfRoot = _movingUnit != null ? _movingUnit.transform : null;
+                bool hasSupport = Simulation.Physics.SupportQuery.HasAnySupportBelow(
+                    center, extents, structureLayer | groundLayer, selfRoot);
 
                 if (!hasSupport) return false;
             }
@@ -795,17 +865,19 @@ namespace Simulation.Building
                 float dist = Vector3.Distance(placePos, unit.transform.position);
                 float rotDiff = Quaternion.Angle(Quaternion.Euler(0, rotation, 0), Quaternion.Euler(0, unit.Rotation, 0));
                 
-                if (dist < 0.1f && rotDiff < 1f && structureData == unit.Data) return false;
+                // Check if they are exactly the same type. If they are different, allow them to overlap.
+                if (structureData == unit.Data)
+                {
+                    // Hard overlap check: วัตถุชนดิเดียวกันทับกันไม่ได้
+                    // ลดขนาดกล่อง 10% เพื่อให้วางชิดผิวกันได้ แต่ห้ามซ้อนทับ
+                    Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
+                    boundsB.Expand(-0.1f);
+                    
+                    Bounds testBoundsA = boundsA;
+                    testBoundsA.Expand(-0.1f);
 
-                // Hard overlap check: objects cannot sink into each other
-                Bounds boundsB = GetGridBounds(unit.transform.position, unit.Rotation, unit.Data);
-                // ลดขนาดการชนลงเล็กน้อยเพื่อยอมให้วางชิดกันหรือต่อกันได้พอดี
-                boundsB.Expand(-0.05f);
-                
-                Bounds testBoundsA = boundsA;
-                testBoundsA.Expand(-0.05f);
-
-                if (testBoundsA.Intersects(boundsB)) return false;
+                    if (testBoundsA.Intersects(boundsB)) return false;
+                }
             }
 
             return true;

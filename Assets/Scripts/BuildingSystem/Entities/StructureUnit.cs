@@ -54,9 +54,9 @@ namespace Simulation.Building
             }
             else
             {
-                rb.mass = 10f; // Default mass if not specified
+                rb.mass = 10f;
             }
-            
+
             bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
             rb.isKinematic = !isSimulating;
         }

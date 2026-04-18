@@ -6,14 +6,14 @@ using Simulation.Data;
 namespace Simulation.Physics
 {
     /// <summary>
-    /// ระบบกระจายน้ำหนักแบบ top-down (คล้าย Poly Bridge)
+    /// ระบบกระจายน้ำหนักตึกแบบบนลงล่าง (Architectural Load Distribution)
     ///
-    /// ทำงานทุก FixedUpdate ขณะ simulation รัน:
-    ///   1. รวบรวม structure ทุกชิ้นที่ยังไม่พัง
-    ///   2. เรียงจาก Y สูง → ต่ำ  (บนลงล่าง)
-    ///   3. แต่ละชิ้น: totalLoad = selfWeight + load ที่รับมาจาก AccumulateLoad()
-    ///   4. กระจาย totalLoad ลงชิ้นที่รองรับอยู่ใต้ (proximity-weighted)
-    ///   5. เรียก EvaluateBreak() ทุกชิ้นหลัง pass เสร็จ
+    /// ทำงานขณะจำลองการรับแรงของตึก (Simulation Run):
+    ///   1. รวบรวมชิ้นส่วนโครงสร้างตึกทั้งหมด
+    ///   2. เรียงจากชั้นบน (Y สูง) ลงไปฐานราก (Y ต่ำ)
+    ///   3. คำนวณน้ำหนักตัวชิ้นส่วน + น้ำหนักที่กดทับมาจากชั้นบน
+    ///   4. กระจายน้ำหนักลงสู่ชิ้นส่วนรองรับ (เสา/ผนัง/พื้น) ด้านล่าง
+    ///   5. ตรวจสอบสภาพการแตกร้าวหรือการพังถล่มของตึก
     ///
     /// Attach script นี้ไว้บน SimulationManager GameObject เดียวกัน
     /// </summary>
@@ -44,11 +44,13 @@ namespace Simulation.Physics
         {
             float dt = Time.fixedDeltaTime;
 
-            // 1. รวบรวม + Reset
+            // 1. รวบรวม + Reset — ใช้ StructureRegistry แทน FindObjectsByType
             _sorted.Clear();
-            StructuralStress[] all = FindObjectsByType<StructuralStress>(FindObjectsSortMode.None);
-            foreach (var s in all)
+            var allUnits = StructureRegistry.All;
+            for (int i = 0; i < allUnits.Count; i++)
             {
+                if (allUnits[i] == null) continue;
+                var s = allUnits[i].GetComponent<StructuralStress>();
                 if (s == null || s.IsBroken) continue;
                 s.ResetFrameLoad();
                 _sorted.Add(s);
@@ -95,44 +97,27 @@ namespace Simulation.Physics
 
         private void DistributeToSupports(StructuralStress myStress, float totalLoad)
         {
+            // ใช้ SupportQuery ที่แชร์กับ BuildingSystem — เกณฑ์เดียวกัน
+            var myUnit = myStress.GetComponent<StructureUnit>();
+            BuildType myType = (myUnit != null && myUnit.Data != null)
+                ? myUnit.Data.buildType
+                : BuildType.Structure;
+
             int layerMask = 1 << myStress.gameObject.layer;
-            Collider[] hits = UnityEngine.Physics.OverlapSphere(
-                myStress.transform.position, supportSearchRadius, layerMask);
+
+            var supports = SupportQuery.FindSupports(
+                myStress.transform.position,
+                supportSearchRadius,
+                verticalMargin,
+                layerMask,
+                myStress.transform.root,
+                myType);
+
+            if (supports.Count == 0) return;
 
             float totalFactor = 0f;
-            var supports = new Dictionary<StructuralStress, float>(); // stress → weight factor
-
-            foreach (var hit in hits)
-            {
-                if (hit.transform.root == myStress.transform.root) continue;
-
-                var supportUnit = hit.GetComponentInParent<StructureUnit>();
-                if (supportUnit == null) continue;
-
-                // Floor ไม่รับน้ำหนักจาก Floor อื่น (กัน infinite loop ในชั้นเดียวกัน)
-                // แต่ยอมให้ Floor รับจาก Structure และ Structure รับจาก Floor
-                var myUnit = myStress.GetComponent<StructureUnit>();
-                if (myUnit != null
-                    && myUnit.Data.buildType == BuildType.Floor
-                    && supportUnit.Data.buildType == BuildType.Floor) continue;
-
-                var supportStress = supportUnit.GetComponent<StructuralStress>();
-                if (supportStress == null || supportStress.IsBroken) continue;
-                if (supports.ContainsKey(supportStress)) continue;
-
-                // support ต้องอยู่ใต้เรา
-                float supportY = supportUnit.transform.position.y;
-                float myY = myStress.transform.position.y;
-                if (supportY > myY - verticalMargin) continue;
-
-                float dist = Vector3.Distance(myStress.transform.position, supportUnit.transform.position);
-                float factor = 1f / (dist + 0.001f); // ยิ่งใกล้ยิ่งรับมาก
-
-                supports[supportStress] = factor;
-                totalFactor += factor;
-            }
-
-            if (totalFactor <= 0f) return;
+            foreach (var kvp in supports)
+                totalFactor += kvp.Value;
 
             foreach (var kvp in supports)
             {

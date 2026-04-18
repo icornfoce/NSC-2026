@@ -3,17 +3,15 @@ using UnityEngine;
 namespace Simulation.Physics
 {
     /// <summary>
-    /// Load-based structural stress system (Poly Bridge style).
+    /// ระบบคำนวณความเครียดของโครงสร้างตึก (Structural Stress System)
     ///
-    /// แทนที่จะอ่าน joint.currentForce ซึ่ง noisy และ spike ตอนเริ่ม
-    /// ระบบนี้รับ "load" จาก LoadPropagationSystem ที่คำนวณจากบนลงล่าง
+    /// รับค่าน้ำหนัก (Load) จาก LoadPropagationSystem ที่คำนวณแรงกดทับของอาคาร
+    /// และตรวจสอบว่าส่วนประกอบของตึกยังรับน้ำหนักได้หรือไม่
     ///
-    ///   - AccumulateLoad()   → เรียกโดย LoadPropagationSystem ทุก frame
-    ///   - EvaluateBreak()    → เช็คหลังจาก propagate เสร็จทั้ง pass
-    ///   - Break effects / shockwave / cascade ยังทำงานเหมือนเดิม
+    ///   - AccumulateLoad()   → รับน้ำหนักที่กดทับลงมาจากชั้นบน
+    ///   - EvaluateBreak()    → ตรวจสอบสภาพโครงสร้างหลังคำนวณแรงเสร็จ
     ///
-    /// Joint ยังคงอยู่ในเกมเพื่อให้ Unity physics ยึด position ไว้
-    /// แต่ไม่ได้ใช้ currentForce ในการคำนวณ damage อีกต่อไป
+    /// ระบบนี้ช่วยจำลองเหตุการณ์ตึกถล่มหรือพื้นทรุดเมื่อรับน้ำหนักเกินกำหนด
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class StructuralStress : MonoBehaviour
@@ -236,17 +234,27 @@ namespace Simulation.Physics
 
         private void OnCollisionEnter(Collision collision)
         {
+            // [Fix 4] ของทับกันไม่ทำดาเมจกันเอง — ถ้าชนกับโครงสร้างด้วยกันที่ยังไม่พัง ให้ข้ามไปเลย
+            StructuralStress otherStress = collision.gameObject.GetComponentInParent<StructuralStress>();
+            if (otherStress != null && !otherStress.IsBroken && !this._isBroken) 
+                return;
+
+            float impact = collision.impulse.magnitude / Time.fixedDeltaTime;
+
+            // [Fix 1] ของตกถึงพื้นหรือกระแทกแรงๆ จอสั่น (ลดเกณฑ์เพื่อให้สั่นง่ายขึ้นเมื่อของตก)
+            if (impact > 200f)
+            {
+                TriggerCameraShake(Mathf.Clamp(impact * 0.0005f, 0.05f, 0.5f), 0.15f);
+            }
+
             if (!_isBroken)
             {
-                float impact = collision.impulse.magnitude / Time.fixedDeltaTime;
-                if (impact > maxLoad * 2f)
-                    TriggerCameraShake(Mathf.Clamp(impact * 0.001f, 0.1f, 0.6f), 0.2f);
+                // ถ้าแรงกระแทกเยอะกว่า MaxLoad มากๆ ถึงจะพังแบบร่วงหล่น
                 return;
             }
 
             if (!_hasBlasted)
             {
-                float impact = collision.impulse.magnitude / Time.fixedDeltaTime;
                 if (impact < maxLoad) return;
                 _hasBlasted = true;
                 FireShockwave(collision.contacts[0].point, impact);

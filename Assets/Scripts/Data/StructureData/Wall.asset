@@ -18,7 +18,7 @@ MonoBehaviour:
   baseHP: 1000
   maxStress: 1000
   forceTransferPercent: 27.2
-  size: {x: 0.1, y: 4, z: 4}
+  size: {x: 1, y: 1, z: 1}
   buildType: 2
   prefab: {fileID: 2622945852013538623, guid: 70003fbe292dfc347b44141495e35488, type: 3}
   defaultMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}

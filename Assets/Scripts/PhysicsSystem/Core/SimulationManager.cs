@@ -5,12 +5,12 @@ using Simulation.Building;
 namespace Simulation.Physics
 {
     /// <summary>
-    /// Manager สำหรับคุมเวลากดเริ่ม/หยุด การจำลองฟิสิกส์ (เหมือนปุ่ม Play ใน Poly Bridge)
+    /// Manager สำหรับคุมเวลากดเริ่ม/หยุด การจำลองทางวิศวกรรมของตึก (Construction Simulation)
     ///
-    /// เพิ่มระบบ Snapshot/Restore:
-    ///   - ก่อนจำลองจะบันทึก transform + HP ของ structure ทุกชิ้น
-    ///   - ResetSimulation() จะคืนทุกอย่างกลับสู่สถานะก่อนจำลอง
-    ///   - ไม่ต้อง destroy/remake objects → เร็วกว่าและไม่มีการสูญเสีย references
+    /// ระบบ Snapshot/Restore:
+    ///   - ก่อนจำลองจะบันทึกสถานะโครงสร้างตึกทุกชิ้น
+    ///   - ResetSimulation() จะคืนทุกอย่างกลับสู่สถานะก่อนทดสอบสภาพตึก
+    ///   - ใช้สำหรับการทดสอบความแข็งแรงของตึกหลังสร้างเสร็จ
     /// </summary>
     public class SimulationManager : MonoBehaviour
     {
@@ -50,6 +50,8 @@ namespace Simulation.Physics
             public Vector3 position;
             public Quaternion rotation;
             public float hp;
+            /// <summary>connectedBody ของ Joint ตอนวาง — null = world anchor</summary>
+            public Rigidbody jointConnectedBody;
         }
 
         private List<StructureSnapshot> _snapshots = new List<StructureSnapshot>();
@@ -102,24 +104,34 @@ namespace Simulation.Physics
             if (isSimulating) return;
             isSimulating = true;
 
-            // 1. ปิดโหมดสร้าง
+            // 1. ปิดโหมดสร้าง + ซ่อน Grid
             if (BuildingSystem.Instance != null)
+            {
                 BuildingSystem.Instance.ExitMode();
+                BuildingSystem.Instance.HideGridVisual();
+            }
 
             // 2. บันทึก snapshot ก่อนเริ่ม physics
             TakeSnapshots();
 
-            // 3. ปลด Kinematic ให้ physics ทำงาน
-            StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
-            foreach (var unit in units)
+            // 3. ปิด Collision ระหว่างของที่ทับกันอยู่แต่แรก เพื่อไม่ให้เด้งระเบิดใส่กันตอนเปิดระบบฟิสิกส์
+            IgnoreOverlappingCollisions();
+
+            // 4. ปลด Kinematic ให้ physics ทำงาน — ใช้ StructureRegistry แทน FindObjectsByType
+            var allUnits = StructureRegistry.All;
+            for (int i = 0; i < allUnits.Count; i++)
             {
-                Rigidbody rb = unit.GetComponent<Rigidbody>();
+                if (allUnits[i] == null) continue;
+                Rigidbody rb = allUnits[i].GetComponent<Rigidbody>();
                 if (rb != null)
                 {
                     rb.isKinematic = false;
                     rb.WakeUp();
                 }
             }
+
+            // 4. ของที่ลอยอยู่โดยไม่มีฐานรองรับ → ถอด Joint ให้ตกลงพื้น
+            DetachFloatingStructures();
 
             OnSimulationStarted?.Invoke();
             Debug.Log("<color=green>▶ Start Simulation</color> — snapshots saved, physics running!");
@@ -138,6 +150,11 @@ namespace Simulation.Physics
             if (!isSimulating) return;
             isSimulating = false;
             FreezeAllStructures();
+
+            // แสดง Grid Visual กลับมา
+            if (BuildingSystem.Instance != null)
+                BuildingSystem.Instance.ShowGridVisual();
+
             OnSimulationStopped?.Invoke();
             Debug.Log("<color=red>■ Stop Simulation</color> — physics frozen.");
         }
@@ -153,6 +170,10 @@ namespace Simulation.Physics
             RestoreSnapshots();
             _snapshots.Clear();
 
+            // แสดง Grid Visual กลับมา
+            if (BuildingSystem.Instance != null)
+                BuildingSystem.Instance.ShowGridVisual();
+
             OnSimulationReset?.Invoke();
             Debug.Log("<color=cyan>↺ Simulation Reset</color> — all structures restored to pre-sim state.");
         }
@@ -164,16 +185,26 @@ namespace Simulation.Physics
         private void TakeSnapshots()
         {
             _snapshots.Clear();
-            StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
-            foreach (var unit in units)
+            // ใช้ StructureRegistry แทน FindObjectsByType — เร็วกว่าเมื่อมีวัตถุจำนวนมาก
+            var allUnits = StructureRegistry.All;
+            for (int i = 0; i < allUnits.Count; i++)
             {
+                var unit = allUnits[i];
                 if (unit == null) continue;
+
+                // เก็บ connectedBody ของ Joint เพื่อ restore ได้ถูกต้อง
+                Rigidbody connectedBody = null;
+                Joint existingJoint = unit.GetComponent<Joint>();
+                if (existingJoint != null)
+                    connectedBody = existingJoint.connectedBody;
+
                 _snapshots.Add(new StructureSnapshot
                 {
                     unit = unit,
                     position = unit.transform.position,
                     rotation = unit.transform.rotation,
                     hp = unit.CurrentHP,
+                    jointConnectedBody = connectedBody,
                 });
             }
             Debug.Log($"[SimulationManager] Snapshot taken for {_snapshots.Count} structures.");
@@ -207,8 +238,8 @@ namespace Simulation.Physics
                 if (stress != null)
                     stress.InitializeStress(snap.hp); // re-init at saved HP (=max since snap is pre-sim)
 
-                // Re-attach joint if it was destroyed during sim
-                RestoreJoint(snap.unit);
+                // Re-attach joint if it was destroyed during sim — ใช้ connectedBody จาก snapshot
+                RestoreJoint(snap.unit, snap.jointConnectedBody);
 
                 restored++;
             }
@@ -217,10 +248,11 @@ namespace Simulation.Physics
 
         /// <summary>
         /// Joints are destroyed when a structure breaks. Re-add a FixedJoint connecting
-        /// to the world (null connected body = world anchor), which is enough to
-        /// hold placed structures in Kinematic-off mode until re-simulation.
+        /// to the original connected body (from snapshot) so that the structural links
+        /// are identical to what the player originally built.
+        /// connectedBody = null means world anchor (ground placement).
         /// </summary>
-        private void RestoreJoint(StructureUnit unit)
+        private void RestoreJoint(StructureUnit unit, Rigidbody connectedBody)
         {
             if (unit == null) return;
 
@@ -228,20 +260,129 @@ namespace Simulation.Physics
             foreach (var j in unit.GetComponents<Joint>())
                 Destroy(j);
 
-            // Re-add a FixedJoint anchored to the world
-            unit.gameObject.AddComponent<FixedJoint>();
+            // Re-add a FixedJoint with the original connected body
+            FixedJoint fixedJoint = unit.gameObject.AddComponent<FixedJoint>();
+
+            // connectedBody อาจ null (= world anchor) หรือชี้ไป Rigidbody ของ structure อื่น
+            // ถ้า connectedBody ถูก destroy ไปแล้ว (เช่น structure ที่เชื่อมถูกลบ) จะเป็น null → world anchor
+            if (connectedBody != null)
+                fixedJoint.connectedBody = connectedBody;
         }
 
         // ─────────────────────────────────────────────────────────────
         // Helpers
         // ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// ถอด Collision คู่วัตถุที่วางทับซ้อนกันตั้งแต่เริ่มต้น
+        /// เพื่อป้องกันปัญหาวัตถุเด้งระเบิดออกจากกันเมื่อเปิด physics
+        /// </summary>
+        private void IgnoreOverlappingCollisions()
+        {
+            var allUnits = StructureRegistry.All;
+            for (int i = 0; i < allUnits.Count; i++)
+            {
+                if (allUnits[i] == null) continue;
+                Collider[] myCols = allUnits[i].GetComponentsInChildren<Collider>();
+                
+                for (int j = i + 1; j < allUnits.Count; j++)
+                {
+                    if (allUnits[j] == null) continue;
+                    Collider[] otherCols = allUnits[j].GetComponentsInChildren<Collider>();
+
+                    // เช็คว่ามี Overlap กันไหม
+                    bool isOverlapping = false;
+                    foreach (var mc in myCols)
+                    {
+                        foreach (var oc in otherCols)
+                        {
+                            if (mc.bounds.Intersects(oc.bounds))
+                            {
+                                isOverlapping = true;
+                                break;
+                            }
+                        }
+                        if (isOverlapping) break;
+                    }
+
+                    // ถ้ามันทับกันอยู่ สั่ง Ignore กันเลย ไม่ต้องพยายามดันออก
+                    if (isOverlapping)
+                    {
+                        foreach (var mc in myCols)
+                        {
+                            foreach (var oc in otherCols)
+                            {
+                                UnityEngine.Physics.IgnoreCollision(mc, oc, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// ตรวจจับชิ้นส่วนที่ลอยอยู่โดยไม่มีฐานรองรับ
+        /// ถอด Joint ทั้งหมดออกเพื่อให้แรงโน้มถ่วงดึงลงพื้น
+        /// </summary>
+        private void DetachFloatingStructures()
+        {
+            float groundThreshold = 0.3f;
+            var allUnits = StructureRegistry.All;
+            int detached = 0;
+
+            for (int i = 0; i < allUnits.Count; i++)
+            {
+                var unit = allUnits[i];
+                if (unit == null) continue;
+
+                // ชิ้นส่วนที่อยู่ใกล้พื้น (Y ต่ำ) ถือว่าอยู่บนพื้นแล้ว
+                if (unit.transform.position.y <= groundThreshold) continue;
+
+                // เช็คว่ามี Collider รองรับอยู่ข้างล่างจริงไหม
+                // ใช้ OverlapBox ใต้วัตถุเพื่อหาว่ามีอะไรรองรับอยู่
+                Collider[] cols = unit.GetComponentsInChildren<Collider>();
+                bool hasPhysicalSupport = false;
+
+                foreach (var col in cols)
+                {
+                    if (col == null) continue;
+                    Bounds b = col.bounds;
+                    // บริเวณใต้ฐานของวัตถุ
+                    Vector3 checkCenter = new Vector3(b.center.x, b.min.y - 0.15f, b.center.z);
+                    Vector3 checkExtents = new Vector3(b.extents.x * 0.5f, 0.1f, b.extents.z * 0.5f);
+
+                    Collider[] hits = UnityEngine.Physics.OverlapBox(checkCenter, checkExtents);
+                    foreach (var hit in hits)
+                    {
+                        // ข้ามตัวเอง
+                        if (hit.transform.root == unit.transform.root) continue;
+                        hasPhysicalSupport = true;
+                        break;
+                    }
+                    if (hasPhysicalSupport) break;
+                }
+
+                if (!hasPhysicalSupport)
+                {
+                    // ถอด Joint ทั้งหมดออก → แรงโน้มถ่วงจะดึงลงพื้น
+                    foreach (var j in unit.GetComponents<Joint>())
+                        Destroy(j);
+                    detached++;
+                }
+            }
+
+            if (detached > 0)
+                Debug.Log($"<color=orange>⚠ Detached {detached} floating structures</color>");
+        }
+
         private void FreezeAllStructures()
         {
-            StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
-            foreach (var unit in units)
+            // ใช้ StructureRegistry — ไม่ต้อง search ทั้ง Scene
+            var allUnits = StructureRegistry.All;
+            for (int i = 0; i < allUnits.Count; i++)
             {
-                Rigidbody rb = unit.GetComponent<Rigidbody>();
+                if (allUnits[i] == null) continue;
+                Rigidbody rb = allUnits[i].GetComponent<Rigidbody>();
                 if (rb != null)
                 {
                     rb.isKinematic = true;

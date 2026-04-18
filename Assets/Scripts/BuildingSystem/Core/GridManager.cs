@@ -8,12 +8,33 @@ namespace Simulation.Building
     {
         public static GridManager Instance { get; private set; }
 
-        [Header("Grid Settings")]
-        public float gridSize = 1f;
-        public float fallbackHeightStep = 1f; // How tall is one cell/floor? fallback
-        public StructureData levelHeightReference; // Reference for the height unit
+        [Header("Grid References")]
+        [Tooltip("ลาก StructureData ของ Floor เข้ามา — ระบบจะใช้ขนาดจาก Prefab นี้เป็นขนาด 1 ช่อง Grid (X/Z)")]
+        public StructureData floorReference;
 
-        public float CurrentHeightStep => levelHeightReference != null ? levelHeightReference.size.y : fallbackHeightStep;
+        [Tooltip("ลาก StructureData ของเสาเข้ามา — ระบบจะใช้ความสูงจาก Prefab นี้เป็น 1 ชั้น (Y)")]
+        public StructureData levelHeightReference;
+
+        [Header("Fallback (ใช้เมื่อไม่ได้ลาก Reference)")]
+        public float fallbackGridSize = 1f;
+        public float fallbackHeightStep = 1f;
+
+        /// <summary>ขนาด 1 ช่อง Grid (X/Z) — อ้างอิงจาก Floor Prefab</summary>
+        public float CurrentGridSize
+        {
+            get
+            {
+                if (floorReference != null)
+                {
+                    // [Fix 2] ใช้ขนาด size ที่ตั้งใน Data ตรงๆ (กว้าง x ยาว ใช้อันที่ยาวสุด)
+                    return Mathf.Max(floorReference.size.x, floorReference.size.z);
+                }
+                return fallbackGridSize;
+            }
+        }
+
+        /// <summary>ความสูง 1 ชั้น (Y) — อ้างอิงจากเสา Prefab</summary>
+        public float CurrentHeightStep => levelHeightReference != null ? levelHeightReference.GetActualSize().y : fallbackHeightStep;
 
         private Dictionary<Vector3Int, GridCell> _grid = new Dictionary<Vector3Int, GridCell>();
 
@@ -25,18 +46,21 @@ namespace Simulation.Building
 
         public Vector3Int WorldToGrid(Vector3 worldPos)
         {
-            int x = Mathf.RoundToInt(worldPos.x / (gridSize > 0 ? gridSize : 1f));
-            int y = Mathf.RoundToInt(worldPos.y / (CurrentHeightStep > 0 ? CurrentHeightStep : 1f));
-            int z = Mathf.RoundToInt(worldPos.z / (gridSize > 0 ? gridSize : 1f));
+            float gs = CurrentGridSize > 0 ? CurrentGridSize : 1f;
+            float hs = CurrentHeightStep > 0 ? CurrentHeightStep : 1f;
+
+            int x = Mathf.RoundToInt(worldPos.x / gs);
+            int y = Mathf.RoundToInt(worldPos.y / hs);
+            int z = Mathf.RoundToInt(worldPos.z / gs);
             return new Vector3Int(x, y, z);
         }
 
         public Vector3 GridToWorld(Vector3Int gridPos)
         {
             return new Vector3(
-                gridPos.x * gridSize,
+                gridPos.x * CurrentGridSize,
                 gridPos.y * CurrentHeightStep,
-                gridPos.z * gridSize
+                gridPos.z * CurrentGridSize
             );
         }
 
@@ -65,13 +89,13 @@ namespace Simulation.Building
             
             if (buildType == BuildType.Floor)
             {
-                // Can't place floor if floor already exists
+                // ห้ามวาง Floor ซ้ำในช่องเดียวกัน
                 if (cell != null && cell.HasFloor) return false;
                 return true; 
             }
             else if (buildType == BuildType.Structure)
             {
-                // Must have a floor to place structure
+                // Structure ต้องมี Floor อยู่ก่อน
                 if (cell == null || !cell.HasFloor) return false;
                 
                 return true;
