@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 2ce42cd974aef414aa2e5009d9b21dd3
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 335682
+  packageName: Grid Shader(URP)
+  packageVersion: 1.0.0
+  assetPath: Assets/CodeWee/cwGridShader(URP)/Shaders/cwGrid(URP).shader
+  uploadId: 850838
