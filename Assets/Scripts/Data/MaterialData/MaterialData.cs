@@ -17,5 +17,9 @@ namespace Simulation.Data
         public AudioClip breakSound;
         public GameObject placeVFX;
         public GameObject breakVFX;
+
+        [Header("Limits")]
+        public float maxCompression = 1000f;
+        public float maxTension = 1000f;
     }
 }

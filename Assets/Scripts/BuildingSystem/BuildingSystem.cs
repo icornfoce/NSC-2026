@@ -14,7 +14,7 @@ namespace Simulation.Building
     /// </summary>
     public class BuildingSystem : MonoBehaviour
     {
-        public enum BuildMode { Idle, Placing, Moving, Deleting }
+        public enum BuildMode { Idle, Placing, Moving, Deleting, Painting }
 
         public static BuildingSystem Instance { get; private set; }
 
@@ -59,6 +59,7 @@ namespace Simulation.Building
         public bool IsPlacing => _currentMode == BuildMode.Placing;
         public bool IsMoving => _currentMode == BuildMode.Moving;
         public bool IsDeleting => _currentMode == BuildMode.Deleting;
+        public bool IsPainting => _currentMode == BuildMode.Painting;
 
         private void Awake()
         {
@@ -94,6 +95,9 @@ namespace Simulation.Building
                     break;
                 case BuildMode.Deleting:
                     HandleDeleteMode();
+                    break;
+                case BuildMode.Painting:
+                    HandlePaintingMode();
                     break;
                 default:
                     break;
@@ -140,8 +144,11 @@ namespace Simulation.Building
 
         private void HandleHoverHighlight()
         {
-            // Only highlight in Move or Delete modes when NOT currently holding an object
-            if ((_currentMode != BuildMode.Moving && _currentMode != BuildMode.Deleting) || (_currentMode == BuildMode.Moving && _movingUnit != null))
+            // Only highlight in Move, Delete, or Paint modes when NOT currently holding an object
+            bool canHighlight = _currentMode == BuildMode.Moving || _currentMode == BuildMode.Deleting || _currentMode == BuildMode.Painting;
+            bool isHolding = _currentMode == BuildMode.Moving && _movingUnit != null;
+
+            if (!canHighlight || isHolding)
             {
                 ClearHover();
                 return;
@@ -268,6 +275,20 @@ namespace Simulation.Building
         }
 
         // --------------------------------------------------------------------------------
+        // PAINT MODE
+        // --------------------------------------------------------------------------------
+
+        private void HandlePaintingMode()
+        {
+            if (Input.GetMouseButtonDown(1)) { ExitMode(); return; }
+
+            if (Input.GetMouseButtonDown(0) && _hoveredUnit != null && _selectedMaterial != null)
+            {
+                ApplyMaterialToStructure(_hoveredUnit, _selectedMaterial);
+            }
+        }
+
+        // --------------------------------------------------------------------------------
         // PUBLIC INTERFACE (for UI)
         // --------------------------------------------------------------------------------
 
@@ -294,6 +315,12 @@ namespace Simulation.Building
         {
             ExitMode();
             _currentMode = BuildMode.Deleting;
+        }
+
+        public void EnterPaintMode()
+        {
+            ExitMode();
+            _currentMode = BuildMode.Painting;
         }
 
         public void SelectMaterial(MaterialData material)
@@ -406,6 +433,30 @@ namespace Simulation.Building
             _currentBudget += (unit.Data.basePrice + materialPrice);
             _placedStructures.Remove(unit);
             unit.DestroyStructure();
+        }
+
+        private void ApplyMaterialToStructure(StructureUnit unit, MaterialData material)
+        {
+            if (unit.CurrentMaterial == material) return;
+
+            // Refund old material, charge new material
+            float oldPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
+            float newPrice = material.priceModifier;
+            float diff = newPrice - oldPrice;
+
+            if (_currentBudget < diff) return; // Can't afford
+
+            _currentBudget -= diff;
+            unit.ChangeMaterial(material);
+
+            // Update stress limits if material has them
+            var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
+            if (stress != null)
+            {
+                stress.InitializeStress(unit.CurrentHP, material.maxCompression, material.maxTension);
+            }
+
+            if (material.placeSound != null) AudioSource.PlayClipAtPoint(material.placeSound, unit.transform.position);
         }
 
         // --------------------------------------------------------------------------------

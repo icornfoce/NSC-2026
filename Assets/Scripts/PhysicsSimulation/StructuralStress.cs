@@ -47,11 +47,18 @@ namespace Simulation.Physics
         [Tooltip("Time (seconds) of continuous low-stress before recovery begins.")]
         [SerializeField] private float recoveryCooldown = 0.5f;
 
-        [Header("Visual Feedback (optional)")]
-        [Tooltip("If assigned, material color lerps from normalColor → stressColor as HP decreases.")]
+        [Header("Physical Limits")]
+        [SerializeField] private float maxCompression = 1000f;
+        [SerializeField] private float maxTension = 1000f;
+
+        [Header("Visual Feedback")]
+        [Tooltip("If assigned, material color lerps based on structural health.")]
         [SerializeField] private Renderer stressRenderer;
-        [SerializeField] private Color normalColor = Color.white;
-        [SerializeField] private Color stressColor = Color.red;
+        
+        [SerializeField] [Range(0f, 1f)] private float stressVisualIntensity = 1.0f;
+
+        [Header("Global Settings")]
+        public static bool ShowHPVisualsGlobal = true;
 
         [Header("Debug")]
         [SerializeField] private bool showDebugLogs = false;
@@ -118,6 +125,12 @@ namespace Simulation.Physics
             _colliders = GetComponentsInChildren<Collider>();
             _joint = GetComponent<Joint>();
 
+            // Auto-find renderer if not set manually
+            if (stressRenderer == null)
+            {
+                stressRenderer = GetComponentInChildren<Renderer>();
+            }
+
             // Base HP will be set by StructureUnit's InitializeStress later
             _currentHP = baseHP;
 
@@ -183,9 +196,22 @@ namespace Simulation.Physics
             float forceDamage  = 0f;
             float torqueDamage = 0f;
 
+            // Use the lower of compression/tension as a base threshold for damage if needed,
+            // or directly calculate damage based on reaching the limits.
+            float currentLimit = maxTension; 
+            // Simple heuristic for compression vs tension: 
+            // If we have a joint, we could check axial force, but for now we use the magnitude
+            // and compare against tension (common for most bridge materials).
+            
             if (forceMag > forceThreshold)
             {
                 forceDamage = (forceMag - forceThreshold) * forceDamageMultiplier * dt;
+                
+                // If force exceeds physical limits, take significant damage
+                if (forceMag > currentLimit)
+                {
+                    forceDamage += (forceMag / currentLimit) * 10f * dt;
+                }
             }
 
             if (torqueMag > torqueThreshold)
@@ -312,13 +338,61 @@ namespace Simulation.Physics
         // Visual Stress Indicator
         // ────────────────────────────────────────────────────────────────
 
+        public void RefreshVisual()
+        {
+            UpdateVisualStress();
+        }
+
         private void UpdateVisualStress()
         {
             if (!_hasStressRenderer || stressRenderer == null) return;
 
-            // Lerp from normalColor (full HP) → stressColor (0 HP)
-            float t = 1f - HealthRatio;
-            stressRenderer.material.color = Color.Lerp(normalColor, stressColor, t);
+            // ถ้าชิ้นส่วนนี้กำลังถูก Highlight (เลือกอยู่) ไม่ต้องอัปเดตสีทับ
+            var unit = GetComponent<Simulation.Building.StructureUnit>();
+            if (unit != null && unit.IsHighlighted) return;
+
+            // ถ้าเปิดการแสดงผลสี ให้กลับไปใช้สีดั้งเดิม
+            if (!ShowHPVisualsGlobal)
+            {
+                stressRenderer.material.color = _cachedOriginalColor;
+                return;
+            }
+
+            // HealthRatio: 1.0 = เต็ม, 0.0 = พัง
+            float health = HealthRatio;
+
+            // 100% (1.0) -> ใช้สีวัสดุดั้งเดิม (ใส)
+            // 50%  (0.5) -> สีส้ม
+            // 0%   (0.0) -> สีแดง
+            Color targetColor;
+
+            if (health >= 0.5f)
+            {
+                // ช่วง 100% -> 50% (ไล่จากสีเดิม ไปหา ส้ม)
+                float t = (1.0f - health) / 0.5f; 
+                targetColor = Color.Lerp(_cachedOriginalColor, new Color(1f, 0.5f, 0f), t);
+            }
+            else
+            {
+                // ช่วง 50% -> 0% (ไล่จากส้ม ไปหา แดง)
+                float t = (0.5f - health) / 0.5f; 
+                targetColor = Color.Lerp(new Color(1f, 0.5f, 0f), Color.red, t);
+            }
+
+            // แสดงผลที่ Renderer ของชิ้นส่วนนั้นทันที
+            stressRenderer.material.color = Color.Lerp(_cachedOriginalColor, targetColor, stressVisualIntensity);
+        }
+
+        /// <summary>
+        /// คำสั่งสำหรับเปิด/ปิด การแสดงผลสี HP ทั้งหมด (ใช้ควบคุมจาก UI)
+        /// </summary>
+        public static void SetVisualStatus(bool isActive)
+        {
+            ShowHPVisualsGlobal = isActive;
+            
+            // อัปเดตสีของทุกชิ้นทันทีเพื่อให้เห็นผล
+            StructuralStress[] allStress = FindObjectsByType<StructuralStress>(FindObjectsSortMode.None);
+            foreach (var s in allStress) s.UpdateVisualStress();
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -342,10 +416,21 @@ namespace Simulation.Physics
             }
         }
 
-        public void InitializeStress(float maxHP)
+        public void InitializeStress(float maxHP, float compression = 1000f, float tension = 1000f)
         {
             baseHP = maxHP;
             _currentHP = maxHP;
+            maxCompression = compression;
+            maxTension = tension;
+
+            // บันทึกสีดั้งเดิมใหม่ทุกครั้งที่มีการ Initialize (เผื่อโดนเปลี่ยน Material ในโหมด Painting)
+            if (stressRenderer == null) stressRenderer = GetComponentInChildren<Renderer>();
+            if (stressRenderer != null)
+            {
+                _cachedOriginalColor = stressRenderer.material.color;
+                _hasStressRenderer = true;
+            }
+
             UpdateVisualStress();
         }
 

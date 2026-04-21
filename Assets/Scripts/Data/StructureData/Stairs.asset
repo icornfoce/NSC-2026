@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
-  m_Name: Wall
+  m_Name: Stairs
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: Wall
   basePrice: 100

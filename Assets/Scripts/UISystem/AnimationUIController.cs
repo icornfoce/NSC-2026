@@ -9,7 +9,7 @@ namespace Simulation.UI
     /// - ช่วยให้ Canvas Group ค่อยๆ ปรากฏ (Fade In) / หายไป (Fade Out)
     /// - ทำปุ่มขยาย (Scale Up) เมื่อเอาเมาส์ไปชี้ (Hover)
     /// </summary>
-    public class UIController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    public class AnimationUIController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         [Header("Fade Settings (Canvas Group)")]
         [Tooltip("ถ้าใส่ Canvas Group เข้ามา จะทำงานตอน Fade")]

@@ -24,6 +24,7 @@ namespace Simulation.Building
         public MaterialData CurrentMaterial => currentMaterial;
         public float CurrentHP => _currentHP;
         public float Rotation => _rotation;
+        public bool IsHighlighted => _isHighlighted;
 
         public void Initialize(StructureData structureData, MaterialData materialData, float rotation = 0f)
         {
@@ -41,7 +42,9 @@ namespace Simulation.Building
             var stress = GetComponent<Simulation.Physics.StructuralStress>();
             if (stress != null)
             {
-                stress.InitializeStress(maxHP);
+                float compLimit = currentMaterial != null ? currentMaterial.maxCompression : 1000f;
+                float tenLimit = currentMaterial != null ? currentMaterial.maxTension : 1000f;
+                stress.InitializeStress(maxHP, compLimit, tenLimit);
             }
 
             Rigidbody rb = GetComponent<Rigidbody>();
@@ -103,17 +106,30 @@ namespace Simulation.Building
 
             if (_renderers.Count == 0) CacheRenderers();
 
+            var stress = GetComponent<Simulation.Physics.StructuralStress>();
+
             for (int i = 0; i < _renderers.Count; i++)
             {
                 if (_renderers[i] == null) continue;
 
                 if (highlighted)
                 {
+                    // ผสมสี Highlight เข้าไป (หรือใช้สี Highlight ไปเลย)
                     _renderers[i].material.color = highlightColor;
                 }
-                else if (i < _originalColors.Count)
+                else
                 {
-                    _renderers[i].material.color = _originalColors[i];
+                    // เมื่อเอา Highlight ออก ให้กลับไปเป็นสีที่ควรจะเป็น
+                    if (stress != null && Simulation.Physics.StructuralStress.ShowHPVisualsGlobal)
+                    {
+                        // ถ้าเปิดระบบ Stress อยู่ ให้ Stress เป็นคนจัดการสีใหม่
+                        stress.RefreshVisual();
+                    }
+                    else if (i < _originalColors.Count)
+                    {
+                        // ถ้าไม่มี Stress ให้กลับไปเป็นสีเดิมของวัสดุ
+                        _renderers[i].material.color = _originalColors[i];
+                    }
                 }
             }
         }

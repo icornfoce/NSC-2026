@@ -20,6 +20,10 @@ namespace Simulation.UI
         [Tooltip("ลากไฟล์ StructureData มาใส่ที่นี่ (ใช้เฉพาะตอนกด StartBuilding)")]
         public StructureData structureToBuild;
 
+        [Header("สำหรับเปลี่ยน Material")]
+        [Tooltip("ลากไฟล์ MaterialData มาใส่ที่นี่ (ใช้กับ SelectMaterial)")]
+        public MaterialData materialToSelect;
+
         /// <summary>
         /// เริ่มโหมดสร้าง — ต้องกำหนด structureToBuild ก่อน
         /// ใช้ลากใส่ OnClick() ของปุ่ม "สร้าง"
@@ -37,6 +41,24 @@ namespace Simulation.UI
         {
             if (BuildingSystem.Instance == null || data == null) return;
             BuildingSystem.Instance.SelectStructure(data);
+        }
+
+        /// <summary>
+        /// เลือก Material ที่จะใช้สร้าง (ใช้ลากใส่ OnClick ของปุ่มเลือกวัสดุ)
+        /// </summary>
+        public void SelectMaterial()
+        {
+            if (BuildingSystem.Instance == null || materialToSelect == null) return;
+            BuildingSystem.Instance.SelectMaterial(materialToSelect);
+        }
+
+        /// <summary>
+        /// เลือก Material ที่จะใช้สร้าง — รับข้อมูลผ่าน Parameter
+        /// </summary>
+        public void SelectMaterialWithData(MaterialData data)
+        {
+            if (BuildingSystem.Instance == null || data == null) return;
+            BuildingSystem.Instance.SelectMaterial(data);
         }
 
         /// <summary>
@@ -68,6 +90,20 @@ namespace Simulation.UI
         }
 
         /// <summary>
+        /// เริ่มโหมดระบายสี/เปลี่ยนวัสดุ — คลิกที่ของในฉากเพื่อเปลี่ยนวัสดุ (Toggle)
+        /// </summary>
+        public void StartPainting()
+        {
+            if (BuildingSystem.Instance == null) return;
+
+            // Toggle
+            if (BuildingSystem.Instance.CurrentMode == BuildingSystem.BuildMode.Painting)
+                BuildingSystem.Instance.ExitMode();
+            else
+                BuildingSystem.Instance.EnterPaintMode();
+        }
+
+        /// <summary>
         /// ยกเลิกโหมดปัจจุบัน กลับสู่ Idle
         /// </summary>
         public void Cancel()
@@ -75,5 +111,50 @@ namespace Simulation.UI
             if (BuildingSystem.Instance == null) return;
             BuildingSystem.Instance.ExitMode();
         }
+
+        // --------------------------------------------------------------------------------
+        // Simulation Controls
+        // --------------------------------------------------------------------------------
+
+        /// <summary>
+        /// เริ่มการจำลองฟิสิกส์ (Play)
+        /// </summary>
+        public void StartSimulation()
+        {
+            if (Simulation.Physics.SimulationManager.Instance != null)
+                Simulation.Physics.SimulationManager.Instance.StartSimulation();
+        }
+
+        /// <summary>
+        /// หยุดการจำลองฟิสิกส์ (Stop)
+        /// </summary>
+        public void StopSimulation()
+        {
+            if (Simulation.Physics.SimulationManager.Instance != null)
+                Simulation.Physics.SimulationManager.Instance.StopSimulation();
+        }
+
+        /// <summary>
+        /// เปิด/ปิด การแสดงผล Grid
+        /// </summary>
+        public void ToggleGrid(bool show)
+        {
+            if (Simulation.Physics.SimulationManager.Instance != null)
+                Simulation.Physics.SimulationManager.Instance.SetGridVisibility(show);
+        }
+
+        /// <summary>
+        /// เปิด/ปิด การแสดงผลสีเลือด (HP Stress) บนชิ้นส่วนโครงสร้าง
+        /// </summary>
+        public void ToggleStressVisuals(bool show)
+        {
+            Simulation.Physics.StructuralStress.SetVisualStatus(show);
+        }
+
+        // --- Convenience Wrappers for UI Buttons ---
+        public void OpenGrid() => ToggleGrid(true);
+        public void CloseGrid() => ToggleGrid(false);
+        public void OpenStressVisuals() => ToggleStressVisuals(true);
+        public void CloseStressVisuals() => ToggleStressVisuals(false);
     }
 }

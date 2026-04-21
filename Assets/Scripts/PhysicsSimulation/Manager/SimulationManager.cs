@@ -10,6 +10,9 @@ namespace Simulation.Physics
     {
         public static SimulationManager Instance { get; private set; }
 
+        [Header("Settings")]
+        [SerializeField] private GameObject gridObject;
+
         [Header("State")]
         [SerializeField] private bool isSimulating = false;
 
@@ -25,6 +28,14 @@ namespace Simulation.Physics
         {
             // แช่แข็งฟิสิกส์เริ่มต้น (ไม่ให้ชิ้นส่วนที่อยู่ในฉากแต่แรกร่วงลงมา)
             FreezeAllStructures();
+
+            // พยายามหา Grid อัตโนมัติถ้าไม่ได้ใส่มา
+            if (gridObject == null)
+            {
+                gridObject = GameObject.Find("Grid");
+                if (gridObject == null) gridObject = GameObject.Find("GridObject");
+                // ค้นหาจาก Tag ก็ได้ถ้าต้องการ
+            }
         }
 
         /// <summary>
@@ -39,6 +50,12 @@ namespace Simulation.Physics
             if (BuildingSystem.Instance != null)
             {
                 BuildingSystem.Instance.ExitMode();
+            }
+
+            // 1.1 ซ่อน Grid เมื่อเริ่มเล่น
+            if (gridObject != null)
+            {
+                gridObject.SetActive(false);
             }
 
             // 2. ค้นหาชิ้นส่วนที่ถูกสร้างทั้งหมดในฉาก
@@ -74,7 +91,21 @@ namespace Simulation.Physics
 
             FreezeAllStructures();
 
+            // แสดง Grid กลับมาเมื่อหยุด
+            SetGridVisibility(true);
+
             Debug.Log("<color=red>■ Stop Simulation</color> - Physics frozen.");
+        }
+
+        /// <summary>
+        /// สั่งเปิด/ปิด Grid ได้จากภายนอก (เช่น จาก UI)
+        /// </summary>
+        public void SetGridVisibility(bool visible)
+        {
+            if (gridObject != null)
+            {
+                gridObject.SetActive(visible);
+            }
         }
 
         private void FreezeAllStructures()
