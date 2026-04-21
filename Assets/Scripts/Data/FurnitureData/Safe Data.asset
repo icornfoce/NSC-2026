@@ -9,15 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
+  m_Script: {fileID: 11500000, guid: 37f7505c3a4af4049850cd8a417d692a, type: 3}
   m_Name: Safe Data
-  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
-  structureName: Wall
-  basePrice: 100
-  baseMass: 50
-  baseHP: 100
-  size: {x: 0.1, y: 4, z: 4}
-  allowOverlap: 0
-  placementSinkThrough: 0
-  prefab: {fileID: 4388186751716208786, guid: 05cdf6b0de8f5564581bfbdf1f7891c5, type: 3}
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.FurnitureData
+  furnitureName: 
+  Price: 0
+  Mass: 0
+  HP: 0
+  size: {x: 3, y: 3, z: 3}
+  prefab: {fileID: 0}
   defaultMaterial: {fileID: 0}

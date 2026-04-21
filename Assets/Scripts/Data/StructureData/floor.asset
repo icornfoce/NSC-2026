@@ -13,12 +13,10 @@ MonoBehaviour:
   m_Name: floor
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: Floor
-  basePrice: 0
-  baseMass: 200
-  baseHP: 1000
-  maxStress: 1000
-  forceTransferPercent: 40
-  size: {x: 2, y: 1, z: 2}
-  buildType: 1
+  basePrice: 100
+  baseMass: 100
+  baseHP: 100
+  size: {x: 5, y: 0.1, z: 5}
+  allowOverlap: 0
   prefab: {fileID: 4189080343208526920, guid: a8f7eb34f959c4d4d989f0f46c92006e, type: 3}
-  defaultMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}
+  defaultMaterial: {fileID: 0}
