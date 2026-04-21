@@ -16,7 +16,7 @@ MonoBehaviour:
   priceModifier: 0
   massModifier: 0
   hpModifier: 0
-  material: {fileID: 2100000, guid: 60d429f5aa8d9cf41b7b1629dda11eaa, type: 2}
+  material: {fileID: 2100000, guid: 6f08aa95da1ec8b4da3b14c9c107028a, type: 2}
   placeSound: {fileID: 0}
   breakSound: {fileID: 0}
   placeVFX: {fileID: 0}
