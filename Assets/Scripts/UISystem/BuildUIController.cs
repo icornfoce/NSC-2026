@@ -16,6 +16,10 @@ namespace Simulation.UI
     /// </summary>
     public class BuildUIController : MonoBehaviour
     {
+        [Header("UI Audio")]
+        [Tooltip("เสียงที่จะเล่นเมื่อกดปุ่ม (สามารถเอา AudioSource มาแปะใส่ปุ่มเองได้ แต่ใส่ตรงนี้สะดวกกว่า)")]
+        [SerializeField] private AudioClip buttonClickSound;
+
         [Header("สำหรับโหมดสร้างเท่านั้น")]
         [Tooltip("ลากไฟล์ StructureData มาใส่ที่นี่ (ใช้เฉพาะตอนกด StartBuilding)")]
         public StructureData structureToBuild;
@@ -24,12 +28,21 @@ namespace Simulation.UI
         [Tooltip("ลากไฟล์ MaterialData มาใส่ที่นี่ (ใช้กับ SelectMaterial)")]
         public MaterialData materialToSelect;
 
+        private void PlayClickSound()
+        {
+            if (buttonClickSound != null && UnityEngine.Camera.main != null)
+            {
+                AudioSource.PlayClipAtPoint(buttonClickSound, UnityEngine.Camera.main.transform.position);
+            }
+        }
+
         /// <summary>
         /// เริ่มโหมดสร้าง — ต้องกำหนด structureToBuild ก่อน
         /// ใช้ลากใส่ OnClick() ของปุ่ม "สร้าง"
         /// </summary>
         public void StartBuilding()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null || structureToBuild == null) return;
             BuildingSystem.Instance.SelectStructure(structureToBuild);
         }
@@ -39,15 +52,18 @@ namespace Simulation.UI
         /// </summary>
         public void StartBuildingWithData(StructureData data)
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null || data == null) return;
             BuildingSystem.Instance.SelectStructure(data);
         }
 
         /// <summary>
         /// เลือก Material ที่จะใช้สร้าง (ใช้ลากใส่ OnClick ของปุ่มเลือกวัสดุ)
+        /// เปลี่ยน Material ทันทีและจำค่าไว้ข้ามโหมด
         /// </summary>
         public void SelectMaterial()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null || materialToSelect == null) return;
             BuildingSystem.Instance.SelectMaterial(materialToSelect);
         }
@@ -57,8 +73,19 @@ namespace Simulation.UI
         /// </summary>
         public void SelectMaterialWithData(MaterialData data)
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null || data == null) return;
             BuildingSystem.Instance.SelectMaterial(data);
+        }
+
+        /// <summary>
+        /// ล้าง Material ที่เลือกไว้ กลับไปใช้ค่าเริ่มต้นของ StructureData
+        /// </summary>
+        public void ClearMaterial()
+        {
+            PlayClickSound();
+            if (BuildingSystem.Instance == null) return;
+            BuildingSystem.Instance.ClearMaterial();
         }
 
         /// <summary>
@@ -66,6 +93,7 @@ namespace Simulation.UI
         /// </summary>
         public void StartMoving()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null) return;
 
             // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
@@ -80,6 +108,7 @@ namespace Simulation.UI
         /// </summary>
         public void StartDeleting()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null) return;
 
             // Toggle: ถ้าอยู่ในโหมดนี้อยู่แล้ว ให้ยกเลิกกลับสู่ Idle
@@ -94,6 +123,7 @@ namespace Simulation.UI
         /// </summary>
         public void StartPainting()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null) return;
 
             // Toggle
@@ -108,6 +138,7 @@ namespace Simulation.UI
         /// </summary>
         public void Cancel()
         {
+            PlayClickSound();
             if (BuildingSystem.Instance == null) return;
             BuildingSystem.Instance.ExitMode();
         }
@@ -156,5 +187,18 @@ namespace Simulation.UI
         public void CloseGrid() => ToggleGrid(false);
         public void OpenStressVisuals() => ToggleStressVisuals(true);
         public void CloseStressVisuals() => ToggleStressVisuals(false);
+
+        // --- Undo / Redo Wrappers ---
+        public void UndoAction()
+        {
+            PlayClickSound();
+            if (BuildingSystem.Instance != null) BuildingSystem.Instance.Undo();
+        }
+
+        public void RedoAction()
+        {
+            PlayClickSound();
+            if (BuildingSystem.Instance != null) BuildingSystem.Instance.Redo();
+        }
     }
 }

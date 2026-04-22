@@ -160,7 +160,9 @@ MonoBehaviour:
   torqueDamageMultiplier: 0.05
   recoveryRate: 10
   recoveryCooldown: 0.5
+  maxCompression: 1000
+  maxTension: 1000
+  supportedLoadMultiplier: 10
   stressRenderer: {fileID: 0}
-  normalColor: {r: 1, g: 1, b: 1, a: 1}
-  stressColor: {r: 1, g: 0, b: 0, a: 1}
-  showDebugLogs: 0
+  stressVisualIntensity: 1
+  showDebugLogs: 1

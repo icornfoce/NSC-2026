@@ -21,17 +21,36 @@ namespace Simulation.Building
         [Header("Grid Settings")]
         [SerializeField] private bool useGridSnap = true;
         [SerializeField] private float gridSize = 1f;
+        [Tooltip("Number of grid columns (X axis)")]
+        [SerializeField] private int gridColumns = 10;
+        [Tooltip("Number of grid rows (Z axis)")]
+        [SerializeField] private int gridRows = 10;
+        [Tooltip("If true, Y axis also snaps to grid increments so all structures share the same base levels.")]
+        [SerializeField] private bool snapYToGrid = true;
 
         [Header("Layer Masks")]
         [SerializeField] private LayerMask groundLayer;
         [SerializeField] private LayerMask structureLayer;
 
         [Header("Height Settings")]
-        [SerializeField] private float heightStep = 0.5f;
+        [Tooltip("Vertical distance between floors. If pillarReference is assigned, this will be auto-set in Start.")]
+        [SerializeField] private float heightStep = 3.0f;
+
+        [Tooltip("Optional: Assign your Pillar/Column structure here. Its height will automatically define the Height Step for the whole building.")]
+        [SerializeField] private StructureData pillarReference;
 
         [Header("Budget")]
         [SerializeField] private float initialBudget = 1000f;
         private float _currentBudget;
+
+        [Header("General SFX / VFX")]
+        [SerializeField] private AudioClip generalPlaceSound;
+        [SerializeField] private AudioClip generalSellSound;
+        [SerializeField] private AudioClip generalPaintSound;
+        [SerializeField] private AudioClip generalUndoSound;
+        [SerializeField] private AudioClip generalRedoSound;
+        [SerializeField] private AudioClip generalErrorSound;
+        [SerializeField] private GameObject generalSellVFX;
 
         [Header("References")]
         [SerializeField] private UnityEngine.Camera mainCamera;
@@ -54,12 +73,39 @@ namespace Simulation.Building
         private float _pivotToBottomOffset = 0f;
         private bool _hasValidTarget;
 
+        // Frame cooldown: prevents the same click that selects a structure from also placing it
+        private bool _justEnteredPlacing = false;
+
+        // Floor-level system
+        private int _currentFloor = 0;
+        private int _maxOccupiedFloor = 0;
+
+        // Undo / Redo System
+        private class BuildAction
+        {
+            public System.Action Undo;
+            public System.Action Redo;
+        }
+        private Stack<BuildAction> _undoStack = new Stack<BuildAction>();
+        private Stack<BuildAction> _redoStack = new Stack<BuildAction>();
+
+        // State for Move Command Undo
+        private Vector3 _moveOriginalPos;
+        private float _moveOriginalRot;
+        private Collider _moveOriginalTargetCol;
+
         public float CurrentBudget => _currentBudget;
         public BuildMode CurrentMode => _currentMode;
         public bool IsPlacing => _currentMode == BuildMode.Placing;
         public bool IsMoving => _currentMode == BuildMode.Moving;
         public bool IsDeleting => _currentMode == BuildMode.Deleting;
         public bool IsPainting => _currentMode == BuildMode.Painting;
+        public MaterialData SelectedMaterial => _selectedMaterial;
+        public int CurrentFloor => _currentFloor;
+        public int MaxOccupiedFloor => _maxOccupiedFloor;
+        public int GridColumns => gridColumns;
+        public int GridRows => gridRows;
+        public float GetGridSize => gridSize;
 
         private void Awake()
         {
@@ -72,6 +118,15 @@ namespace Simulation.Building
             _currentBudget = initialBudget;
             if (mainCamera == null) mainCamera = UnityEngine.Camera.main;
             if (ghostBuilder == null) ghostBuilder = GetComponent<GhostBuilder>();
+            
+            // Auto-set heightStep from pillarReference if available
+            if (pillarReference != null && pillarReference.prefab != null)
+            {
+                (Vector3 center, Vector3 size) = GetPrefabBounds(pillarReference.prefab);
+                heightStep = size.y;
+                Debug.Log($"[BuildingSystem] Auto-set Height Step to {heightStep} from '{pillarReference.structureName}' height.");
+            }
+
             // หา CameraController จากกล้องหลัก
             if (mainCamera != null)
                 _cameraController = mainCamera.GetComponent<Simulation.Camera.CameraController>();
@@ -81,6 +136,7 @@ namespace Simulation.Building
         {
             UpdateRaycast();
             HandleHoverHighlight();
+            HandleFloorSwitch();
 
             switch (_currentMode)
             {
@@ -101,6 +157,148 @@ namespace Simulation.Building
                     break;
                 default:
                     break;
+            }
+
+            HandleUndoRedoInput();
+        }
+
+        // --------------------------------------------------------------------------------
+        // UNDO / REDO
+        // --------------------------------------------------------------------------------
+
+        private void HandleUndoRedoInput()
+        {
+            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) || Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand))
+            {
+                if (Input.GetKeyDown(KeyCode.Z))
+                {
+                    if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                        Redo();
+                    else
+                        Undo();
+                }
+                else if (Input.GetKeyDown(KeyCode.Y))
+                {
+                    Redo();
+                }
+            }
+        }
+
+        private void ExecuteCommand(System.Action execute, System.Action undo)
+        {
+            execute();
+            _undoStack.Push(new BuildAction { Undo = undo, Redo = execute });
+            _redoStack.Clear(); // Any new action clears the redo history
+        }
+
+        public void Undo()
+        {
+            if (_undoStack.Count > 0)
+            {
+                var action = _undoStack.Pop();
+                action.Undo();
+                _redoStack.Push(action);
+                
+                if (generalUndoSound != null) AudioSource.PlayClipAtPoint(generalUndoSound, mainCamera.transform.position);
+                RecalculateMaxFloor();
+            }
+            else if (generalErrorSound != null)
+            {
+                AudioSource.PlayClipAtPoint(generalErrorSound, mainCamera.transform.position);
+            }
+        }
+
+        public void Redo()
+        {
+            if (_redoStack.Count > 0)
+            {
+                var action = _redoStack.Pop();
+                action.Redo();
+                _undoStack.Push(action);
+
+                if (generalRedoSound != null) AudioSource.PlayClipAtPoint(generalRedoSound, mainCamera.transform.position);
+                RecalculateMaxFloor();
+            }
+            else if (generalErrorSound != null)
+            {
+                AudioSource.PlayClipAtPoint(generalErrorSound, mainCamera.transform.position);
+            }
+        }
+
+        // --------------------------------------------------------------------------------
+        // FLOOR SWITCHING (Q/E)
+        // --------------------------------------------------------------------------------
+
+        private void HandleFloorSwitch()
+        {
+            if (Input.GetKeyDown(KeyCode.Q))
+            {
+                // Go DOWN one floor (minimum = 0)
+                if (_currentFloor > 0)
+                {
+                    _currentFloor--;
+                    NotifyCameraFloorChanged();
+                }
+            }
+
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                // Go UP one floor (max = highest occupied floor + 1)
+                if (_currentFloor < _maxOccupiedFloor + 1)
+                {
+                    _currentFloor++;
+                    NotifyCameraFloorChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Recalculate the highest floor that has at least one structure placed on it.
+        /// Called after placing, moving, or deleting structures.
+        /// </summary>
+        private void RecalculateMaxFloor()
+        {
+            _maxOccupiedFloor = 0;
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == null) continue;
+                int floor = GetFloorFromY(unit.transform.position.y);
+                if (floor > _maxOccupiedFloor) _maxOccupiedFloor = floor;
+            }
+        }
+
+        /// <summary>
+        /// Convert a world Y position to a floor index (0-based).
+        /// Floor 0 = ground level, Floor 1 = one heightStep up, etc.
+        /// </summary>
+        public int GetFloorFromY(float worldY)
+        {
+            float step = heightStep > 0f ? heightStep : gridSize;
+            return Mathf.Max(0, Mathf.RoundToInt(worldY / step));
+        }
+
+        /// <summary>
+        /// Get the world Y position for a given floor index.
+        /// </summary>
+        public float GetFloorY(int floor)
+        {
+            float step = heightStep > 0f ? heightStep : gridSize;
+            return floor * step;
+        }
+
+        private void NotifyCameraFloorChanged()
+        {
+            if (_cameraController != null)
+            {
+                _cameraController.SetFloorView(_currentFloor, GetFloorY(_currentFloor));
+            }
+        }
+
+        public void TriggerCameraShake(float intensity)
+        {
+            if (_cameraController != null)
+            {
+                _cameraController.TriggerShake(intensity);
             }
         }
 
@@ -190,6 +388,13 @@ namespace Simulation.Building
             if (Input.GetMouseButtonDown(1)) { ExitMode(); return; }
             if (Input.GetKeyDown(KeyCode.R)) ghostBuilder.Rotate();
 
+            // Skip the frame where we just entered placing mode (prevents UI click from placing)
+            if (_justEnteredPlacing)
+            {
+                _justEnteredPlacing = false;
+                return;
+            }
+
             if (_hasValidTarget && ghostBuilder.HasGhost)
             {
                 Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
@@ -226,6 +431,16 @@ namespace Simulation.Building
         private void EnterMovingSubmode(StructureUnit unit)
         {
             ClearHover();
+            
+            // Save original state for Undo
+            _moveOriginalPos = unit.transform.position;
+            _moveOriginalRot = unit.Rotation;
+            var joint = unit.GetComponent<Joint>();
+            if (joint != null && joint.connectedBody != null)
+                _moveOriginalTargetCol = joint.connectedBody.GetComponentInChildren<Collider>();
+            else
+                _moveOriginalTargetCol = null;
+                
             _movingUnit = unit;
             _movingUnit.gameObject.SetActive(false);
 
@@ -294,9 +509,13 @@ namespace Simulation.Building
 
         public void SelectStructure(StructureData data)
         {
+            // Save current material before ExitMode clears it
+            MaterialData savedMaterial = _selectedMaterial;
             ExitMode();
             _selectedData = data;
+            _selectedMaterial = savedMaterial; // Restore material selection
             _currentMode = BuildMode.Placing;
+            _justEnteredPlacing = true; // Prevent this frame's click from placing
 
             if (data != null && data.prefab != null)
             {
@@ -326,10 +545,8 @@ namespace Simulation.Building
         public void SelectMaterial(MaterialData material)
         {
             _selectedMaterial = material;
-            if (_currentMode == BuildMode.Placing && ghostBuilder.HasGhost)
-            {
-                // Optionally update ghost appearance?
-            }
+            // Material selection persists across mode changes
+            // Ghost appearance update could be added here if desired
         }
 
         public void ExitMode()
@@ -337,10 +554,19 @@ namespace Simulation.Building
             if (_movingUnit != null) _movingUnit.gameObject.SetActive(true);
             _movingUnit = null;
             _selectedData = null;
-            _selectedMaterial = null;
+            // Material persists across mode changes — don't clear it here
             _currentMode = BuildMode.Idle;
+            _justEnteredPlacing = false;
             ghostBuilder.DestroyGhost();
             ClearHover();
+        }
+
+        /// <summary>
+        /// Fully clear the selected material (e.g. from a "reset material" button).
+        /// </summary>
+        public void ClearMaterial()
+        {
+            _selectedMaterial = null;
         }
 
         // --------------------------------------------------------------------------------
@@ -351,54 +577,86 @@ namespace Simulation.Building
         {
             MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
             float materialPrice = mat != null ? mat.priceModifier : 0f;
-            
-            _currentBudget -= (_selectedData.basePrice + materialPrice);
+            float totalCost = _selectedData.basePrice + materialPrice;
 
             GameObject obj = Instantiate(_selectedData.prefab, position, Quaternion.Euler(0, rotation, 0));
             SetLayerRecursively(obj, structureLayer);
-            
-            // Rename to include grid position
             obj.name = $"{_selectedData.prefab.name} {GetGridPositionString(position)}";
 
             StructureUnit unit = obj.GetComponent<StructureUnit>() ?? obj.AddComponent<StructureUnit>();
             unit.Initialize(_selectedData, mat, rotation);
-
-            AttachJoint(obj, targetCollider);
-
-            _placedStructures.Add(unit);
             
-            // Ignore collisions with deeply overlapping objects so they don't explode and lose HP
-            IgnoreOverlappingCollisions(unit);
+            // Start disabled so the Command can enable it
+            obj.SetActive(false);
 
-            if (mat != null)
-            {
-                if (mat.placeSound != null) AudioSource.PlayClipAtPoint(mat.placeSound, position);
-                if (mat.placeVFX != null) Instantiate(mat.placeVFX, position, Quaternion.identity);
-            }
+            ExecuteCommand(
+                execute: () => {
+                    _currentBudget -= totalCost;
+                    obj.SetActive(true);
+                    AttachJoint(obj, targetCollider);
+                    _placedStructures.Add(unit);
+                    IgnoreOverlappingCollisions(unit);
+
+                    if (mat != null)
+                    {
+                        if (mat.placeSound != null) AudioSource.PlayClipAtPoint(mat.placeSound, position);
+                        if (mat.placeVFX != null) Instantiate(mat.placeVFX, position, Quaternion.identity);
+                    }
+                    else if (generalPlaceSound != null)
+                    {
+                        AudioSource.PlayClipAtPoint(generalPlaceSound, position);
+                    }
+                },
+                undo: () => {
+                    _currentBudget += totalCost;
+                    _placedStructures.Remove(unit);
+                    
+                    var joints = obj.GetComponents<Joint>();
+                    foreach (var j in joints) Destroy(j);
+                    
+                    obj.SetActive(false);
+                }
+            );
+
+            RecalculateMaxFloor();
         }
 
         private void ConfirmMove(Vector3 position, float rotation, Collider targetCollider = null)
         {
-            _movingUnit.transform.position = position;
-            _movingUnit.transform.rotation = Quaternion.Euler(0, rotation, 0);
-            _movingUnit.SetRotation(rotation);
-            
-            // Rename to include new grid position
-            _movingUnit.name = $"{_movingUnit.Data.prefab.name} {GetGridPositionString(position)}";
+            Vector3 oldPos = _moveOriginalPos;
+            float oldRot = _moveOriginalRot;
+            Collider oldTarget = _moveOriginalTargetCol;
+            StructureUnit unit = _movingUnit;
 
-            _movingUnit.gameObject.SetActive(true);
+            ExecuteCommand(
+                execute: () => {
+                    unit.transform.position = position;
+                    unit.transform.rotation = Quaternion.Euler(0, rotation, 0);
+                    unit.SetRotation(rotation);
+                    unit.name = $"{unit.Data.prefab.name} {GetGridPositionString(position)}";
+                    unit.gameObject.SetActive(true);
+                    AttachJoint(unit.gameObject, targetCollider);
+                    IgnoreOverlappingCollisions(unit);
 
-            AttachJoint(_movingUnit.gameObject, targetCollider);
-            
-            // Re-eval ignoring collisions in new location
-            IgnoreOverlappingCollisions(_movingUnit);
-
-            if (_movingUnit.CurrentMaterial != null && _movingUnit.CurrentMaterial.placeSound != null) 
-                AudioSource.PlayClipAtPoint(_movingUnit.CurrentMaterial.placeSound, position);
+                    if (unit.CurrentMaterial != null && unit.CurrentMaterial.placeSound != null) 
+                        AudioSource.PlayClipAtPoint(unit.CurrentMaterial.placeSound, position);
+                    else if (generalPlaceSound != null)
+                        AudioSource.PlayClipAtPoint(generalPlaceSound, position);
+                },
+                undo: () => {
+                    unit.transform.position = oldPos;
+                    unit.transform.rotation = Quaternion.Euler(0, oldRot, 0);
+                    unit.SetRotation(oldRot);
+                    unit.name = $"{unit.Data.prefab.name} {GetGridPositionString(oldPos)}";
+                    unit.gameObject.SetActive(true);
+                    AttachJoint(unit.gameObject, oldTarget);
+                    IgnoreOverlappingCollisions(unit);
+                }
+            );
 
             _movingUnit = null;
             ghostBuilder.DestroyGhost();
-            // Stay in Move mode for next pickup
+            RecalculateMaxFloor();
         }
 
         private void AttachJoint(GameObject structureObj, Collider targetCollider)
@@ -417,6 +675,19 @@ namespace Simulation.Building
                 Rigidbody targetRb = targetCollider.GetComponentInParent<Rigidbody>();
                 // if targetRb is null, it connects to the world (static) which is usually what we want for ground.
                 fixedJoint.connectedBody = targetRb;
+
+                // Ignore physics collision between the structure and ALL colliders of the target
+                // (e.g. if the ground has multiple colliders, ignore all of them).
+                Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
+                Collider[] targetColliders = targetCollider.transform.root.GetComponentsInChildren<Collider>();
+                
+                foreach (var col in myColliders)
+                {
+                    foreach (var targetCol in targetColliders)
+                    {
+                        UnityEngine.Physics.IgnoreCollision(col, targetCol, true);
+                    }
+                }
             }
         }
 
@@ -430,33 +701,86 @@ namespace Simulation.Building
         private void TrySellStructure(StructureUnit unit)
         {
             float materialPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
-            _currentBudget += (unit.Data.basePrice + materialPrice);
-            _placedStructures.Remove(unit);
-            unit.DestroyStructure();
+            float sellPrice = unit.Data.basePrice + materialPrice;
+
+            Collider targetCol = null;
+            var joint = unit.GetComponent<Joint>();
+            if (joint != null && joint.connectedBody != null)
+            {
+                targetCol = joint.connectedBody.GetComponentInChildren<Collider>();
+            }
+
+            ExecuteCommand(
+                execute: () => {
+                    _currentBudget += sellPrice;
+                    _placedStructures.Remove(unit);
+                    
+                    var joints = unit.GetComponents<Joint>();
+                    foreach (var j in joints) Destroy(j);
+                    
+                    unit.gameObject.SetActive(false);
+                    
+                    if (generalSellSound != null) AudioSource.PlayClipAtPoint(generalSellSound, unit.transform.position);
+                    if (generalSellVFX != null) Instantiate(generalSellVFX, unit.transform.position, Quaternion.identity);
+                },
+                undo: () => {
+                    _currentBudget -= sellPrice;
+                    unit.gameObject.SetActive(true);
+                    AttachJoint(unit.gameObject, targetCol);
+                    _placedStructures.Add(unit);
+                    IgnoreOverlappingCollisions(unit);
+                }
+            );
+
+            RecalculateMaxFloor();
         }
 
         private void ApplyMaterialToStructure(StructureUnit unit, MaterialData material)
         {
             if (unit.CurrentMaterial == material) return;
 
-            // Refund old material, charge new material
-            float oldPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
-            float newPrice = material.priceModifier;
+            MaterialData oldMaterial = unit.CurrentMaterial;
+            MaterialData newMaterial = material;
+            
+            float oldPrice = oldMaterial != null ? oldMaterial.priceModifier : 0f;
+            float newPrice = newMaterial.priceModifier;
             float diff = newPrice - oldPrice;
 
-            if (_currentBudget < diff) return; // Can't afford
-
-            _currentBudget -= diff;
-            unit.ChangeMaterial(material);
-
-            // Update stress limits if material has them
-            var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
-            if (stress != null)
+            if (_currentBudget < diff)
             {
-                stress.InitializeStress(unit.CurrentHP, material.maxCompression, material.maxTension);
+                if (generalErrorSound != null) AudioSource.PlayClipAtPoint(generalErrorSound, mainCamera.transform.position);
+                return; // Can't afford
             }
 
-            if (material.placeSound != null) AudioSource.PlayClipAtPoint(material.placeSound, unit.transform.position);
+            ExecuteCommand(
+                execute: () => {
+                    _currentBudget -= diff;
+                    unit.ChangeMaterial(newMaterial);
+                    
+                    var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
+                    if (stress != null)
+                        stress.InitializeStress(unit.CurrentHP, newMaterial.maxCompression, newMaterial.maxTension);
+
+                    if (newMaterial.placeSound != null) 
+                        AudioSource.PlayClipAtPoint(newMaterial.placeSound, unit.transform.position);
+                    else if (generalPaintSound != null)
+                        AudioSource.PlayClipAtPoint(generalPaintSound, unit.transform.position);
+                        
+                    if (newMaterial.placeVFX != null) Instantiate(newMaterial.placeVFX, unit.transform.position, Quaternion.identity);
+                },
+                undo: () => {
+                    _currentBudget += diff;
+                    unit.ChangeMaterial(oldMaterial);
+                    
+                    var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
+                    if (stress != null)
+                    {
+                        float comp = oldMaterial != null ? oldMaterial.maxCompression : 1000f;
+                        float tens = oldMaterial != null ? oldMaterial.maxTension : 1000f;
+                        stress.InitializeStress(unit.CurrentHP, comp, tens);
+                    }
+                }
+            );
         }
 
         // --------------------------------------------------------------------------------
@@ -484,7 +808,17 @@ namespace Simulation.Building
                     // topY    = world Y of the top face of hitUnit
                     float topY    = hitUnit.transform.position.y + hitUnitPivotToTop;
 
-                    if (hitUnit.Data.placementSinkThrough)
+                    // Determine if the ray hit a SIDE face (horizontal normal)
+                    // vs a TOP/BOTTOM face (vertical normal)
+                    bool isSideHit = Mathf.Abs(_currentHitNormal.y) < 0.5f;
+
+                    if (isSideHit)
+                    {
+                        // Side placement: place at the same base level as the hit structure
+                        // so structures can be built outward horizontally
+                        y = bottomY;
+                    }
+                    else if (hitUnit.Data.placementSinkThrough)
                     {
                         // Sink-through: start from the BOTTOM of the floor/slab
                         // so placed wall shares the same ground level as walls on bare ground
@@ -498,7 +832,17 @@ namespace Simulation.Building
                 }
             }
 
-            // Add pivot-to-bottom offset of the piece being placed so its bottom lands exactly at y
+            // Snap the desired BASE/BOTTOM position to the heightStep grid so all structures share the same discrete height levels
+            if (snapYToGrid)
+            {
+                float yStep = heightStep > 0f ? heightStep : gridSize;
+                if (yStep > 0f)
+                {
+                    y = Mathf.Round(y / yStep) * yStep;
+                }
+            }
+
+            // Finally, add pivot-to-bottom offset of the piece being placed so its bottom lands exactly at y
             y += _pivotToBottomOffset;
 
             return new Vector3(x, y, z);
@@ -556,14 +900,13 @@ namespace Simulation.Building
             BoxCollider bc = prefab.GetComponentInChildren<BoxCollider>(true);
             if (bc != null)
             {
-                Vector3 center = bc.center;
-                // Scale center if the collider is on a scaled child object
-                if (bc.transform != prefab.transform)
-                {
-                    center = Vector3.Scale(center, bc.transform.localScale) + bc.transform.localPosition;
-                }
-                Vector3 size = Vector3.Scale(bc.size, bc.transform.localScale);
-                return (center, size);
+                Vector3 size = Vector3.Scale(bc.size, bc.transform.lossyScale);
+                size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
+
+                Vector3 offsetFromRoot = bc.transform.TransformPoint(bc.center) - prefab.transform.position;
+                Vector3 unrotatedOffset = Quaternion.Inverse(prefab.transform.rotation) * offsetFromRoot;
+
+                return (unrotatedOffset, size);
             }
 
             Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
@@ -578,13 +921,18 @@ namespace Simulation.Building
                 if (mf != null && mf.sharedMesh != null)
                 {
                     Bounds localB = mf.sharedMesh.bounds;
-                    // Approximate its root-relative position
-                    localB.size = Vector3.Scale(localB.size, r.transform.localScale);
-                    localB.center = Vector3.Scale(localB.center, r.transform.localScale);
-                    localB.center += r.transform.localPosition;
                     
-                    if (!boundsInitialized) { prefabBounds = localB; boundsInitialized = true; }
-                    else { prefabBounds.Encapsulate(localB); }
+                    Vector3 worldCenter = r.transform.TransformPoint(localB.center);
+                    Vector3 offsetFromRoot = worldCenter - prefab.transform.position;
+                    Vector3 unrotatedCenter = Quaternion.Inverse(prefab.transform.rotation) * offsetFromRoot;
+                    
+                    Vector3 worldSize = Vector3.Scale(localB.size, r.transform.lossyScale);
+                    worldSize = new Vector3(Mathf.Abs(worldSize.x), Mathf.Abs(worldSize.y), Mathf.Abs(worldSize.z));
+                    
+                    Bounds transformedBounds = new Bounds(unrotatedCenter, worldSize);
+
+                    if (!boundsInitialized) { prefabBounds = transformedBounds; boundsInitialized = true; }
+                    else { prefabBounds.Encapsulate(transformedBounds); }
                 }
             }
             return (prefabBounds.center, prefabBounds.size);
@@ -697,5 +1045,56 @@ namespace Simulation.Building
                 }
             }
         }
+
+        // --------------------------------------------------------------------------------
+        // GRID VISUALIZATION (Scene View)
+        // --------------------------------------------------------------------------------
+
+#if UNITY_EDITOR
+        private void OnDrawGizmos()
+        {
+            // Draw the grid in Scene view based on gridColumns × gridRows
+            Gizmos.color = new Color(0.5f, 0.8f, 1f, 0.3f);
+
+            float totalWidth  = gridColumns * gridSize;
+            float totalDepth  = gridRows * gridSize;
+            float startX = -totalWidth * 0.5f;
+            float startZ = -totalDepth * 0.5f;
+
+            // Draw current floor level
+            float floorY = Application.isPlaying ? GetFloorY(_currentFloor) : 0f;
+
+            // Vertical lines (along Z)
+            for (int x = 0; x <= gridColumns; x++)
+            {
+                float xPos = startX + x * gridSize;
+                Gizmos.DrawLine(
+                    new Vector3(xPos, floorY, startZ),
+                    new Vector3(xPos, floorY, startZ + totalDepth)
+                );
+            }
+
+            // Horizontal lines (along X)
+            for (int z = 0; z <= gridRows; z++)
+            {
+                float zPos = startZ + z * gridSize;
+                Gizmos.DrawLine(
+                    new Vector3(startX, floorY, zPos),
+                    new Vector3(startX + totalWidth, floorY, zPos)
+                );
+            }
+
+            // Draw border in a brighter color
+            Gizmos.color = new Color(0.3f, 0.6f, 1f, 0.7f);
+            Vector3 bottomLeft  = new Vector3(startX, floorY, startZ);
+            Vector3 bottomRight = new Vector3(startX + totalWidth, floorY, startZ);
+            Vector3 topLeft     = new Vector3(startX, floorY, startZ + totalDepth);
+            Vector3 topRight    = new Vector3(startX + totalWidth, floorY, startZ + totalDepth);
+            Gizmos.DrawLine(bottomLeft, bottomRight);
+            Gizmos.DrawLine(bottomRight, topRight);
+            Gizmos.DrawLine(topRight, topLeft);
+            Gizmos.DrawLine(topLeft, bottomLeft);
+        }
+#endif
     }
 }

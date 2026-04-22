@@ -19,5 +19,6 @@ namespace Simulation.Data
         [Header("Assets")]
         public GameObject prefab;
         public MaterialData defaultMaterial;
+        public GameObject breakVFX;
     }
 }

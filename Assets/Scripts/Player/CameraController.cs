@@ -35,6 +35,11 @@ namespace Simulation.Camera
         [SerializeField] private Vector3 pivotPoint = Vector3.zero;
         [SerializeField] private float initialDistance = 25f;
 
+        [Header("Camera Shake")]
+        [SerializeField] private float shakeDecayRate = 5f;
+        [SerializeField] private float maxShakeIntensity = 2f;
+        private float _currentShakeIntensity = 0f;
+
         [Header("Occlusion Transparency")]
         [Tooltip("Layer ที่จะตรวจหาของบัง (ตั้งให้ตรงกับ Structure Layer)")]
         [SerializeField] private LayerMask occlusionLayer;
@@ -117,8 +122,15 @@ namespace Simulation.Camera
             Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
             Vector3 offset = rotation * new Vector3(0f, 0f, -_currentDistance);
 
-            transform.position = pivotPoint + offset;
-            transform.LookAt(pivotPoint);
+            Vector3 shakeOffset = Vector3.zero;
+            if (_currentShakeIntensity > 0.01f)
+            {
+                shakeOffset = Random.insideUnitSphere * _currentShakeIntensity;
+                _currentShakeIntensity = Mathf.Lerp(_currentShakeIntensity, 0f, shakeDecayRate * Time.deltaTime);
+            }
+
+            transform.position = pivotPoint + offset + shakeOffset;
+            transform.LookAt(pivotPoint); // Look at the stable pivot point while shaking
         }
 
         // ─────────────────────────────────────────────
@@ -291,9 +303,39 @@ namespace Simulation.Camera
         // Public API
         // ─────────────────────────────────────────────
 
+        /// <summary>
+        /// Current floor index being viewed (read-only from outside).
+        /// </summary>
+        public int CurrentViewFloor { get; private set; } = 0;
+
         public void FocusOn(Vector3 point)
         {
             pivotPoint = point;
+        }
+
+        /// <summary>
+        /// Lock the camera to view a specific floor level.
+        /// Called by BuildingSystem when Q/E is pressed.
+        /// </summary>
+        /// <param name="floorIndex">Floor number (0 = ground, 1 = first floor, etc.)</param>
+        /// <param name="floorWorldY">World Y position of that floor.</param>
+        public void SetFloorView(int floorIndex, float floorWorldY)
+        {
+            CurrentViewFloor = floorIndex;
+            // Move the pivot point's Y to the floor level, keep X/Z the same
+            pivotPoint = new Vector3(pivotPoint.x, floorWorldY, pivotPoint.z);
+        }
+
+        /// <summary>
+        /// Triggers a screen shake effect with the given intensity.
+        /// </summary>
+        public void TriggerShake(float intensity)
+        {
+            float cappedIntensity = Mathf.Min(intensity, maxShakeIntensity);
+            if (cappedIntensity > _currentShakeIntensity)
+            {
+                _currentShakeIntensity = cappedIntensity;
+            }
         }
 
         private void OnDestroy()

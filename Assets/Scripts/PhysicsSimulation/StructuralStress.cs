@@ -28,14 +28,14 @@ namespace Simulation.Physics
 
         [Header("Force → Damage Conversion")]
         [Tooltip("Forces below this magnitude cause zero damage (Newtons).")]
-        [SerializeField] private float forceThreshold = 50f;
+        [SerializeField] private float forceThreshold = 100f;
 
         [Tooltip("Multiplier: damage = (forceMagnitude - threshold) * forceDamageMultiplier * dt")]
         [SerializeField] private float forceDamageMultiplier = 0.1f;
 
         [Header("Torque → Damage Conversion")]
         [Tooltip("Torques below this magnitude cause zero damage (N·m).")]
-        [SerializeField] private float torqueThreshold = 30f;
+        [SerializeField] private float torqueThreshold = 100f;
 
         [Tooltip("Multiplier: damage = (torqueMagnitude - threshold) * torqueDamageMultiplier * dt")]
         [SerializeField] private float torqueDamageMultiplier = 0.05f;
@@ -50,6 +50,9 @@ namespace Simulation.Physics
         [Header("Physical Limits")]
         [SerializeField] private float maxCompression = 1000f;
         [SerializeField] private float maxTension = 1000f;
+        [Tooltip("How many times its own weight a structure can support before stress damage begins. " +
+                 "E.g. 10 means a floor can hold 10× its own mass worth of structures above it.")]
+        [SerializeField] private float supportedLoadMultiplier = 10f;
 
         [Header("Visual Feedback")]
         [Tooltip("If assigned, material color lerps based on structural health.")]
@@ -181,8 +184,18 @@ namespace Simulation.Physics
                 torqueMag = _joint.currentTorque.magnitude;
             }
 
-            // Include collision forces (e.g. weight of stacked objects)
-            forceMag += _currentCollisionForceSum;
+            // NOTE: We no longer add _currentCollisionForceSum here to avoid double-counting support weight.
+            // The joint's currentForce already accounts for weight/impact transferred through the structure.
+
+            // ── Subtract expected structural load ────────────────────
+            // Joint.currentForce includes the gravitational reaction force of
+            // this piece AND everything it supports above (walls on floor, etc).
+            // We subtract (own mass × gravity × multiplier) so that normal
+            // building loads (up to N× own weight) cause zero damage.
+            // Only forces that EXCEED this expected load cause stress.
+            float restingWeight = _rb != null ? _rb.mass * UnityEngine.Physics.gravity.magnitude : 0f;
+            float expectedLoad = restingWeight * supportedLoadMultiplier;
+            forceMag = Mathf.Max(0f, forceMag - expectedLoad);
 
             LastForceMagnitude  = forceMag;
             LastTorqueMagnitude = torqueMag;
@@ -259,9 +272,29 @@ namespace Simulation.Physics
             OnHealthChanged?.Invoke(_currentHP, HealthRatio);
         }
 
+        private void OnCollisionEnter(Collision collision)
+        {
+            // If the impact is strong enough, trigger a small camera shake
+            if (collision.impulse.magnitude > 50f)
+            {
+                Building.BuildingSystem.Instance?.TriggerCameraShake(Mathf.Clamp(collision.impulse.magnitude * 0.005f, 0.2f, 1.5f));
+            }
+        }
+
         private void OnCollisionStay(Collision collision)
         {
             if (_isBroken) return;
+
+            // ── Ignore collision forces from other placed structures ──
+            // Structures placed next to / on top of each other should NOT damage
+            // each other through collision impulses.  Only non-structure contacts
+            // (debris, external physics objects, disasters) count as stress.
+            if (collision.collider != null)
+            {
+                var otherUnit = collision.collider.GetComponentInParent<Building.StructureUnit>();
+                if (otherUnit != null) return; // ← skip: this is another building piece
+            }
+
             // Accumulate impulses for this FixedUpdate step.
             // collision.impulse is the total impulse applied per contact pair. Force = impulse / dt.
             _currentCollisionForceSum += (collision.impulse.magnitude / Time.fixedDeltaTime);
@@ -289,6 +322,9 @@ namespace Simulation.Physics
                 Debug.Log($"[StructuralStress] *** BREAK *** {name}", this);
             }
 
+            // Trigger a strong camera shake when a structure breaks
+            Building.BuildingSystem.Instance?.TriggerCameraShake(2.0f);
+
             // 1. Destroy the joint
             if (_joint != null)
             {
@@ -314,16 +350,20 @@ namespace Simulation.Physics
 
             // 4. Play break effects via StructureUnit if available
             var unit = GetComponent<Building.StructureUnit>();
-            if (unit != null && unit.CurrentMaterial != null)
+            if (unit != null)
             {
-                if (unit.CurrentMaterial.breakSound != null)
+                if (unit.CurrentMaterial != null)
                 {
-                    AudioSource.PlayClipAtPoint(unit.CurrentMaterial.breakSound, transform.position);
+                    if (unit.CurrentMaterial.breakSound != null)
+                        AudioSource.PlayClipAtPoint(unit.CurrentMaterial.breakSound, transform.position);
+
+                    if (unit.CurrentMaterial.breakVFX != null)
+                        Instantiate(unit.CurrentMaterial.breakVFX, transform.position, Quaternion.identity);
                 }
 
-                if (unit.CurrentMaterial.breakVFX != null)
+                if (unit.Data != null && unit.Data.breakVFX != null)
                 {
-                    Instantiate(unit.CurrentMaterial.breakVFX, transform.position, Quaternion.identity);
+                    Instantiate(unit.Data.breakVFX, transform.position, Quaternion.identity);
                 }
             }
 
