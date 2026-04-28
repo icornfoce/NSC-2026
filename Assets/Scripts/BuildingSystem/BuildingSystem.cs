@@ -1013,6 +1013,13 @@ namespace Simulation.Building
         {
             if (structureData == null) return true;
 
+            // ── 1. Check Grid Boundaries ──────────────────────────────
+            if (!IsWithinBounds(position, rotation, structureData))
+            {
+                return false;
+            }
+
+            // ── 2. Check Overlaps with other structures ───────────────
             Bounds boundsA = GetGridBounds(position, rotation, structureData);
 
             foreach (var unit in _placedStructures)
@@ -1086,6 +1093,50 @@ namespace Simulation.Building
                     UnityEngine.Physics.IgnoreCollision(col, hit, true);
                 }
             }
+        }
+
+        /// <summary>
+        /// ตรวจสอบว่าโครงสร้างอยู่ในขอบเขตของ Grid (X, Z) และไม่จมดิน (Y) หรือไม่
+        /// </summary>
+        private bool IsWithinBounds(Vector3 position, float rotation, StructureData data)
+        {
+            if (data == null) return true;
+
+            // 1. คำนวณขนาด X, Z ตามการหมุน (ถ้าหมุน 90/270 ให้สลับแกน)
+            float sizeX = data.size.x;
+            float sizeZ = data.size.z;
+            if (Mathf.Abs(rotation % 180f) > 45f)
+            {
+                sizeX = data.size.z;
+                sizeZ = data.size.x;
+            }
+
+            // 2. คำนวณขอบเขตในโลก (World Space)
+            // พื้นที่ Grid อยู่ที่เซ็นเตอร์ (0,0) กระจายออกไปครึ่งหนึ่งของ totalWidth/totalDepth
+            float halfWidth = (sizeX * gridSize) * 0.5f;
+            float halfDepth = (sizeZ * gridSize) * 0.5f;
+
+            float minX = position.x - halfWidth;
+            float maxX = position.x + halfWidth;
+            float minZ = position.z - halfDepth;
+            float maxZ = position.z + halfDepth;
+
+            // ขอบเขต Grid สูงสุด
+            float gridLimitX = (gridColumns * gridSize) * 0.5f;
+            float gridLimitZ = (gridRows * gridSize) * 0.5f;
+
+            // 3. ตรวจสอบ X, Z (บวกเผื่อค่านิดหน่อยป้องกัน Floating point error)
+            if (minX < -gridLimitX - 0.01f || maxX > gridLimitX + 0.01f) return false;
+            if (minZ < -gridLimitZ - 0.01f || maxZ > gridLimitZ + 0.01f) return false;
+
+            // 4. ตรวจสอบ Y (ห้ามจมดิน)
+            // position.y คือตำแหน่ง Pivot, เราต้องหาตำแหน่งฐาน (Bottom)
+            float pivotToBottom = GetPivotToBottomOffset(data.prefab);
+            float bottomY = position.y - pivotToBottom;
+
+            if (bottomY < -0.01f) return false;
+
+            return true;
         }
 
         // --------------------------------------------------------------------------------
