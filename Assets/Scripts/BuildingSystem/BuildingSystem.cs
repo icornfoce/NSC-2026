@@ -5,7 +5,7 @@ using Simulation.Data;
 namespace Simulation.Building
 {
     /// <summary>
-    /// 3D Building System (Poly Bridge-style stacking).
+    /// 3D Building System
     /// - Place on ground or on top of existing structures
     /// - Stacks upward infinitely
     /// - Size comes from Prefab bounds (Pivot-aware)
@@ -759,7 +759,11 @@ namespace Simulation.Building
                     
                     var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
                     if (stress != null)
-                        stress.InitializeStress(unit.CurrentHP, newMaterial.maxCompression, newMaterial.maxTension);
+                    {
+                        float comp = unit.Data.baseMaxCompression + newMaterial.compressionModifier;
+                        float tens = unit.Data.baseMaxTension     + newMaterial.tensionModifier;
+                        stress.InitializeStress(unit.CurrentHP, comp, tens);
+                    }
 
                     if (newMaterial.placeSound != null) 
                         AudioSource.PlayClipAtPoint(newMaterial.placeSound, unit.transform.position);
@@ -775,8 +779,8 @@ namespace Simulation.Building
                     var stress = unit.GetComponent<Simulation.Physics.StructuralStress>();
                     if (stress != null)
                     {
-                        float comp = oldMaterial != null ? oldMaterial.maxCompression : 1000f;
-                        float tens = oldMaterial != null ? oldMaterial.maxTension : 1000f;
+                        float comp = unit.Data.baseMaxCompression + (oldMaterial != null ? oldMaterial.compressionModifier : 0f);
+                        float tens = unit.Data.baseMaxTension     + (oldMaterial != null ? oldMaterial.tensionModifier : 0f);
                         stress.InitializeStress(unit.CurrentHP, comp, tens);
                     }
                 }

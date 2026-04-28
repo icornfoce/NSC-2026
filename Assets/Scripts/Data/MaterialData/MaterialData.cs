@@ -18,8 +18,10 @@ namespace Simulation.Data
         public GameObject placeVFX;
         public GameObject breakVFX;
 
-        [Header("Limits")]
-        public float maxCompression = 1000f;
-        public float maxTension = 1000f;
+        [Header("Limits (Additive Modifier)")]
+        [Tooltip("Bonus compression capacity added to the structure's base maxCompression (N).")]
+        public float compressionModifier = 0f;
+        [Tooltip("Bonus tension capacity added to the structure's base maxTension (N).")]
+        public float tensionModifier = 0f;
     }
 }

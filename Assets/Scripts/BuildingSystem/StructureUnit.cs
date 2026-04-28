@@ -42,8 +42,9 @@ namespace Simulation.Building
             var stress = GetComponent<Simulation.Physics.StructuralStress>();
             if (stress != null)
             {
-                float compLimit = currentMaterial != null ? currentMaterial.maxCompression : 1000f;
-                float tenLimit = currentMaterial != null ? currentMaterial.maxTension : 1000f;
+                // Final limit = Structure base + Material modifier
+                float compLimit = data.baseMaxCompression + (currentMaterial != null ? currentMaterial.compressionModifier : 0f);
+                float tenLimit  = data.baseMaxTension     + (currentMaterial != null ? currentMaterial.tensionModifier : 0f);
                 stress.InitializeStress(maxHP, compLimit, tenLimit);
             }
 

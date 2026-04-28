@@ -16,6 +16,12 @@ namespace Simulation.Data
         [Tooltip("If true, structures placed on top of this will sink to its base Y instead of stacking on top. Use for Floor/Foundation pieces so Walls share the same base level.")]
         public bool placementSinkThrough = false;
 
+        [Header("Physical Limits")]
+        [Tooltip("Base maximum compression force this structure can withstand (N). Material modifier adds on top.")]
+        public float baseMaxCompression = 1000f;
+        [Tooltip("Base maximum tension force this structure can withstand (N). Material modifier adds on top.")]
+        public float baseMaxTension = 1000f;
+
         [Header("Assets")]
         public GameObject prefab;
         public MaterialData defaultMaterial;

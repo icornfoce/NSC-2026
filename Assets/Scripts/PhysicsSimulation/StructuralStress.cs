@@ -76,9 +76,6 @@ namespace Simulation.Physics
         private Collider[] _colliders;
         private bool _isBroken;
 
-        // Tracks collision forces (e.g. weight of objects above)
-        private float _currentCollisionForceSum;
-
         // Recovery cooldown timer — counts how long stress has been below thresholds
         private float _lowStressTimer;
 
@@ -184,9 +181,6 @@ namespace Simulation.Physics
                 torqueMag = _joint.currentTorque.magnitude;
             }
 
-            // NOTE: We no longer add _currentCollisionForceSum here to avoid double-counting support weight.
-            // The joint's currentForce already accounts for weight/impact transferred through the structure.
-
             // ── Subtract expected structural load ────────────────────
             // Joint.currentForce includes the gravitational reaction force of
             // this piece AND everything it supports above (walls on floor, etc).
@@ -199,9 +193,6 @@ namespace Simulation.Physics
 
             LastForceMagnitude  = forceMag;
             LastTorqueMagnitude = torqueMag;
-
-            // Reset collision force for the next fixed update frame
-            _currentCollisionForceSum = 0f;
 
             // ── 2. Compute per-frame damage ───────────────────────────
             float dt = Time.fixedDeltaTime;
@@ -281,24 +272,7 @@ namespace Simulation.Physics
             }
         }
 
-        private void OnCollisionStay(Collision collision)
-        {
-            if (_isBroken) return;
 
-            // ── Ignore collision forces from other placed structures ──
-            // Structures placed next to / on top of each other should NOT damage
-            // each other through collision impulses.  Only non-structure contacts
-            // (debris, external physics objects, disasters) count as stress.
-            if (collision.collider != null)
-            {
-                var otherUnit = collision.collider.GetComponentInParent<Building.StructureUnit>();
-                if (otherUnit != null) return; // ← skip: this is another building piece
-            }
-
-            // Accumulate impulses for this FixedUpdate step.
-            // collision.impulse is the total impulse applied per contact pair. Force = impulse / dt.
-            _currentCollisionForceSum += (collision.impulse.magnitude / Time.fixedDeltaTime);
-        }
 
         // ────────────────────────────────────────────────────────────────
         // Breaking Logic
