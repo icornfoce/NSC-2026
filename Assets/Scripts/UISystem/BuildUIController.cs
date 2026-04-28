@@ -105,6 +105,73 @@ namespace Simulation.UI
 
         /// <summary>
         /// เริ่มโหมดลบ/ขาย — คลิกที่ของในฉากเพื่อลบและได้เงินคืน (Toggle)
+        /// กดค้าง 2 วิ = ลบทั้งหมด (Delete All)
+        /// 
+        /// วิธีใช้ใน UI:
+        ///   - ใส่ EventTrigger บนปุ่ม Delete
+        ///   - PointerDown  → OnDeleteButtonDown()
+        ///   - PointerUp    → OnDeleteButtonUp()
+        /// </summary>
+
+        [Header("Delete Hold Settings")]
+        [Tooltip("ระยะเวลากดค้างเพื่อลบทั้งหมด (วินาที)")]
+        [SerializeField] private float deleteHoldDuration = 2f;
+
+        private bool _isHoldingDeleteButton = false;
+        private float _deleteHoldTimer = 0f;
+        private bool _deleteAllTriggered = false;
+
+        private void Update()
+        {
+            // นับเวลากดค้างปุ่ม Delete
+            if (_isHoldingDeleteButton && !_deleteAllTriggered)
+            {
+                _deleteHoldTimer += Time.deltaTime;
+
+                if (_deleteHoldTimer >= deleteHoldDuration)
+                {
+                    _deleteAllTriggered = true;
+                    PlayClickSound();
+
+                    if (BuildingSystem.Instance != null)
+                    {
+                        BuildingSystem.Instance.DeleteAllStructures();
+                    }
+
+                    Debug.Log("<color=orange>🗑 Hold complete — Deleted ALL!</color>");
+                }
+            }
+        }
+
+        /// <summary>
+        /// เรียกจาก EventTrigger → PointerDown บนปุ่ม Delete
+        /// </summary>
+        public void OnDeleteButtonDown()
+        {
+            _isHoldingDeleteButton = true;
+            _deleteHoldTimer = 0f;
+            _deleteAllTriggered = false;
+        }
+
+        /// <summary>
+        /// เรียกจาก EventTrigger → PointerUp บนปุ่ม Delete
+        /// </summary>
+        public void OnDeleteButtonUp()
+        {
+            _isHoldingDeleteButton = false;
+
+            // ถ้ากดสั้นๆ (ไม่ถึง 2 วิ) → Toggle โหมด Delete ตามปกติ
+            if (!_deleteAllTriggered)
+            {
+                StartDeleting();
+            }
+
+            _deleteHoldTimer = 0f;
+            _deleteAllTriggered = false;
+        }
+
+        /// <summary>
+        /// Toggle โหมดลบ/ขาย (ใช้เมื่อกดสั้นๆ)
         /// </summary>
         public void StartDeleting()
         {

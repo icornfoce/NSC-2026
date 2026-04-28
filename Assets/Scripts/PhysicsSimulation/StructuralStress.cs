@@ -344,8 +344,8 @@ namespace Simulation.Physics
             // 5. Fire event
             OnBreak?.Invoke(this);
 
-            // 6. (Optional) Auto-destroy after a few seconds so debris doesn't pile up
-            Destroy(gameObject, 5f);
+            // 6. Deactivate instead of Destroy so SimulationManager can restore on rewind
+            gameObject.SetActive(false);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -456,6 +456,33 @@ namespace Simulation.Physics
         {
             if (_isBroken) return;
             _currentHP = baseHP;
+            UpdateVisualStress();
+        }
+
+        /// <summary>
+        /// Completely resets this component to its initial state.
+        /// Used by SimulationManager to rewind after simulation stops.
+        /// </summary>
+        public void ResetFull()
+        {
+            _isBroken = false;
+            _currentHP = baseHP;
+            _lowStressTimer = 0f;
+            LastForceMagnitude = 0f;
+            LastTorqueMagnitude = 0f;
+
+            // Re-cache colliders (in case array was stale)
+            _colliders = GetComponentsInChildren<Collider>();
+
+            // Re-enable all colliders
+            foreach (var col in _colliders)
+            {
+                if (col != null) col.enabled = true;
+            }
+
+            // Re-find joint (will be re-created externally by SimulationManager)
+            _joint = GetComponent<Joint>();
+
             UpdateVisualStress();
         }
 

@@ -569,6 +569,44 @@ namespace Simulation.Building
             _selectedMaterial = null;
         }
 
+        /// <summary>
+        /// ลบโครงสร้างทั้งหมดที่วางไว้ คืนเงินทั้งหมด (ใช้กับ UI กดค้าง)
+        /// </summary>
+        public void DeleteAllStructures()
+        {
+            ExitMode();
+
+            // คืนเงินและลบทีละตัว (ไม่ใส่ Undo เพราะเป็นการ Clear ทั้งหมด)
+            for (int i = _placedStructures.Count - 1; i >= 0; i--)
+            {
+                StructureUnit unit = _placedStructures[i];
+                if (unit == null) continue;
+
+                float materialPrice = unit.CurrentMaterial != null ? unit.CurrentMaterial.priceModifier : 0f;
+                float sellPrice = unit.Data.basePrice + materialPrice;
+                _currentBudget += sellPrice;
+
+                // ลบ Joint ก่อน
+                var joints = unit.GetComponents<Joint>();
+                foreach (var j in joints) Destroy(j);
+
+                // เล่น VFX/SFX
+                if (generalSellVFX != null) Instantiate(generalSellVFX, unit.transform.position, Quaternion.identity);
+
+                Destroy(unit.gameObject);
+            }
+
+            _placedStructures.Clear();
+            _undoStack.Clear();
+            _redoStack.Clear();
+
+            if (generalSellSound != null && mainCamera != null)
+                AudioSource.PlayClipAtPoint(generalSellSound, mainCamera.transform.position);
+
+            RecalculateMaxFloor();
+            Debug.Log("<color=orange>🗑 Deleted ALL structures</color>");
+        }
+
         // --------------------------------------------------------------------------------
         // INTERNAL LOGIC
         // --------------------------------------------------------------------------------
