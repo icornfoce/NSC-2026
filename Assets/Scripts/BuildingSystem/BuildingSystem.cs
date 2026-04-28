@@ -710,12 +710,32 @@ namespace Simulation.Building
 
             if (targetCollider != null)
             {
-                Rigidbody targetRb = targetCollider.GetComponentInParent<Rigidbody>();
-                // if targetRb is null, it connects to the world (static) which is usually what we want for ground.
+                // ── ค้นหา Rigidbody ของเป้าหมายให้แม่นยำที่สุด ──
+                Rigidbody targetRb = null;
+
+                // 1. ถ้าเป้าหมายเป็นโครงสร้าง → หา Rigidbody จาก StructureUnit โดยตรง
+                var targetUnit = targetCollider.GetComponentInParent<StructureUnit>();
+                if (targetUnit != null)
+                {
+                    targetRb = targetUnit.GetComponent<Rigidbody>();
+                }
+
+                // 2. Fallback: ค้นหาจาก hierarchy ขึ้นไป
+                if (targetRb == null)
+                {
+                    targetRb = targetCollider.GetComponentInParent<Rigidbody>();
+                }
+
+                // 3. Fallback สุดท้าย: ค้นหาจาก root ของ object
+                if (targetRb == null)
+                {
+                    targetRb = targetCollider.transform.root.GetComponent<Rigidbody>();
+                }
+
+                // ถ้า targetRb ยังเป็น null → จะต่อกับ world (เหมาะกับพื้น/ground)
                 fixedJoint.connectedBody = targetRb;
 
                 // Ignore physics collision between the structure and ALL colliders of the target
-                // (e.g. if the ground has multiple colliders, ignore all of them).
                 Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
                 Collider[] targetColliders = targetCollider.transform.root.GetComponentsInChildren<Collider>();
                 
@@ -1061,36 +1081,25 @@ namespace Simulation.Building
 
         private void IgnoreOverlappingCollisions(StructureUnit newUnit)
         {
-            if (newUnit == null || newUnit.Data == null || newUnit.Data.prefab == null) return;
+            if (newUnit == null) return;
             
             Collider[] myColliders = newUnit.GetComponentsInChildren<Collider>(true);
             if (myColliders.Length == 0) return;
 
-            (Vector3 localCenter, Vector3 localSize) = GetPrefabBounds(newUnit.Data.prefab);
-            
-            // To deeply catch any horizontal overlap (including kissing corners) without ignoring the ground/ceiling:
-            // We use 55% for X/Z to cast a slightly wider net horizontally.
-            // We use 45% for Y to shrink it vertically, ensuring we don't accidentally ignore collisions with the floor it stands on.
-            Vector3 halfExtents = new Vector3(
-                localSize.x * 0.55f, 
-                localSize.y * 0.45f, 
-                localSize.z * 0.55f
-            );
-            
-            Quaternion rot = Quaternion.Euler(0, newUnit.Rotation, 0) * newUnit.Data.prefab.transform.rotation;
-            Vector3 worldCenter = newUnit.transform.position + rot * localCenter;
-
-            Collider[] hits = UnityEngine.Physics.OverlapBox(worldCenter, halfExtents, rot, structureLayer);
-
-            foreach (var hit in hits)
+            // Ignore collisions กับโครงสร้างทั้งหมดที่วางไว้แล้ว
+            // รับประกันว่าไม่มีชิ้นส่วนไหนดันกันทางฟิสิกส์ ไม่ว่าจะอยู่จุดไหนก็ตาม
+            foreach (var unit in _placedStructures)
             {
-                // Skip our own colliders
-                if (hit.transform.root == newUnit.transform.root) continue;
-
-                foreach (var col in myColliders)
+                if (unit == null || unit == newUnit) continue;
+                
+                Collider[] otherColliders = unit.GetComponentsInChildren<Collider>(true);
+                foreach (var myCol in myColliders)
                 {
-                    // Ignore physics collisions completely so they don't produce extreme repulsion forces & HP loss
-                    UnityEngine.Physics.IgnoreCollision(col, hit, true);
+                    foreach (var otherCol in otherColliders)
+                    {
+                        if (myCol != null && otherCol != null)
+                            UnityEngine.Physics.IgnoreCollision(myCol, otherCol, true);
+                    }
                 }
             }
         }

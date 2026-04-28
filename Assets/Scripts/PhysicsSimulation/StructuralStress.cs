@@ -79,6 +79,10 @@ namespace Simulation.Physics
         // Recovery cooldown timer — counts how long stress has been below thresholds
         private float _lowStressTimer;
 
+        // Settlement timer — skip damage for a short time after init to let physics settle
+        private float _settlementTimer;
+        private const float SETTLEMENT_DURATION = 0.5f;
+
         // Cached original material color (if stressRenderer is set)
         private Color _cachedOriginalColor;
         private bool _hasStressRenderer;
@@ -160,6 +164,14 @@ namespace Simulation.Physics
         private void FixedUpdate()
         {
             if (_isBroken) return;
+
+            // ── Settlement Period: ข้ามการคำนวณ damage ช่วง Physics settle ──
+            if (_settlementTimer > 0f)
+            {
+                _settlementTimer -= Time.fixedDeltaTime;
+                return;
+            }
+
             if (_joint == null)
             {
                 _joint = GetComponent<Joint>();
@@ -436,6 +448,7 @@ namespace Simulation.Physics
             _currentHP = maxHP;
             maxCompression = compression;
             maxTension = tension;
+            _settlementTimer = SETTLEMENT_DURATION;
 
             // บันทึกสีดั้งเดิมใหม่ทุกครั้งที่มีการ Initialize (เผื่อโดนเปลี่ยน Material ในโหมด Painting)
             if (stressRenderer == null) stressRenderer = GetComponentInChildren<Renderer>();
@@ -468,6 +481,7 @@ namespace Simulation.Physics
             _isBroken = false;
             _currentHP = baseHP;
             _lowStressTimer = 0f;
+            _settlementTimer = SETTLEMENT_DURATION;
             LastForceMagnitude = 0f;
             LastTorqueMagnitude = 0f;
 
