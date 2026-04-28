@@ -586,6 +586,9 @@ namespace Simulation.Building
                 float sellPrice = unit.Data.basePrice + materialPrice;
                 _currentBudget += sellPrice;
 
+                // ทำความสะอาด Joint ที่อ้างอิงถึงตัวนี้
+                CleanupJointsReferencingUnit(unit);
+
                 // ลบ Joint ก่อน
                 var joints = unit.GetComponents<Joint>();
                 foreach (var j in joints) Destroy(j);
@@ -633,6 +636,7 @@ namespace Simulation.Building
                     obj.SetActive(true);
                     AttachJoint(obj, targetCollider);
                     _placedStructures.Add(unit);
+                    AttachSideJoints(obj);
                     IgnoreOverlappingCollisions(unit);
 
                     if (mat != null)
@@ -647,6 +651,7 @@ namespace Simulation.Building
                 },
                 undo: () => {
                     _currentBudget += totalCost;
+                    CleanupJointsReferencingUnit(unit);
                     _placedStructures.Remove(unit);
                     
                     var joints = obj.GetComponents<Joint>();
@@ -674,6 +679,7 @@ namespace Simulation.Building
                     unit.name = $"{unit.Data.prefab.name} {GetGridPositionString(position)}";
                     unit.gameObject.SetActive(true);
                     AttachJoint(unit.gameObject, targetCollider);
+                    AttachSideJoints(unit.gameObject);
                     IgnoreOverlappingCollisions(unit);
 
                     if (unit.CurrentMaterial != null && unit.CurrentMaterial.placeSound != null) 
@@ -688,6 +694,7 @@ namespace Simulation.Building
                     unit.name = $"{unit.Data.prefab.name} {GetGridPositionString(oldPos)}";
                     unit.gameObject.SetActive(true);
                     AttachJoint(unit.gameObject, oldTarget);
+                    AttachSideJoints(unit.gameObject);
                     IgnoreOverlappingCollisions(unit);
                 }
             );
@@ -749,6 +756,71 @@ namespace Simulation.Building
             }
         }
 
+        /// <summary>
+        /// สร้าง FixedJoint เชื่อมกับโครงสร้างข้างเคียง (ซ้าย/ขวา/หน้า/หลัง/บน/ล่าง)
+        /// เรียกหลัง AttachJoint เพื่อให้โครงสร้างมี Joint หลายทาง
+        /// ถ้า Joint หลักพัง ยังมี Joint ข้างๆ ยึดอยู่
+        /// </summary>
+        private void AttachSideJoints(GameObject structureObj)
+        {
+            StructureUnit newUnit = structureObj.GetComponent<StructureUnit>();
+            Rigidbody newRb = structureObj.GetComponent<Rigidbody>();
+            if (newUnit == null || newRb == null) return;
+
+            // หา connected body ของ main joint เพื่อไม่สร้างซ้ำ
+            Joint mainJoint = structureObj.GetComponent<Joint>();
+            Rigidbody mainConnected = mainJoint != null ? mainJoint.connectedBody : null;
+
+            float maxHorizDist = gridSize * 1.5f;
+            float maxVertDist = heightStep * 1.2f;
+
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == null || unit == newUnit) continue;
+
+                Rigidbody otherRb = unit.GetComponent<Rigidbody>();
+                if (otherRb == null || otherRb == mainConnected) continue;
+
+                // ตรวจสอบระยะห่าง (แยก horizontal กับ vertical)
+                Vector3 diff = unit.transform.position - structureObj.transform.position;
+                float horizDist = new Vector2(diff.x, diff.z).magnitude;
+                float vertDist = Mathf.Abs(diff.y);
+
+                bool isAdjacent = (horizDist <= maxHorizDist && vertDist <= maxVertDist);
+                if (!isAdjacent) continue;
+
+                // สร้าง FixedJoint เชื่อมกับเพื่อนบ้าน
+                FixedJoint sideJoint = structureObj.AddComponent<FixedJoint>();
+                sideJoint.connectedBody = otherRb;
+            }
+        }
+
+        /// <summary>
+        /// เมื่อลบโครงสร้าง ให้ตรวจหาโครงสร้างอื่นที่มี Joint อ้างอิงถึงตัวนี้
+        /// แล้วลบ Joint นั้นออก เพื่อป้องกัน null reference → Break ผิดปกติ
+        /// ถ้ายังมี Joint อื่นเหลืออยู่ โครงสร้างจะไม่พัง
+        /// </summary>
+        private void CleanupJointsReferencingUnit(StructureUnit deletedUnit)
+        {
+            if (deletedUnit == null) return;
+            Rigidbody deletedRb = deletedUnit.GetComponent<Rigidbody>();
+            if (deletedRb == null) return;
+
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == null || unit == deletedUnit) continue;
+
+                Joint[] joints = unit.GetComponents<Joint>();
+                foreach (var joint in joints)
+                {
+                    if (joint != null && joint.connectedBody == deletedRb)
+                    {
+                        Destroy(joint);
+                    }
+                }
+            }
+        }
+
         private void CancelCurrentMove()
         {
             if (_movingUnit != null) _movingUnit.gameObject.SetActive(true);
@@ -771,6 +843,7 @@ namespace Simulation.Building
             ExecuteCommand(
                 execute: () => {
                     _currentBudget += sellPrice;
+                    CleanupJointsReferencingUnit(unit);
                     _placedStructures.Remove(unit);
                     
                     var joints = unit.GetComponents<Joint>();

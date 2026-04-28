@@ -16,9 +16,11 @@ MonoBehaviour:
   basePrice: 100
   baseMass: 50
   baseHP: 100
-  size: {x: 0.1, y: 4, z: 4}
+  size: {x: 1, y: 1, z: 4}
   allowOverlap: 1
   placementSinkThrough: 0
+  baseMaxCompression: 1000
+  baseMaxTension: 1000
   prefab: {fileID: 2622945852013538623, guid: 70003fbe292dfc347b44141495e35488, type: 3}
   defaultMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}
   breakVFX: {fileID: 0}
