@@ -15,6 +15,8 @@ namespace Simulation.Data
         public bool allowOverlap = false;
         [Tooltip("If true, structures placed on top of this will sink to its base Y instead of stacking on top. Use for Floor/Foundation pieces so Walls share the same base level.")]
         public bool placementSinkThrough = false;
+        [Tooltip("If true, this structure requires ground or another structure directly beneath it to be placed. Enable for Pillars to prevent floating placement.")]
+        public bool requiresSupport = false;
 
         [Header("Physical Limits")]
         [Tooltip("Base maximum compression force this structure can withstand (N). Material modifier adds on top.")]

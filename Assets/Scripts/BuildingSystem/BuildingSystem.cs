@@ -316,23 +316,48 @@ namespace Simulation.Building
             LayerMask combinedMask = groundLayer | structureLayer;
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-            // ใช้ RaycastAll แล้วเรียงจากใกล้ → ไกล
-            RaycastHit[] hits = UnityEngine.Physics.RaycastAll(ray, 500f, combinedMask);
+            // ใช้ SphereCastAll (รัศมีเล็กๆ เพื่อจับขอบ Floor บางได้)
+            float castRadius = gridSize * 0.15f;
+            RaycastHit[] hits = UnityEngine.Physics.SphereCastAll(ray, castRadius, 500f, combinedMask);
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
             // อ่านชุด occluded colliders จากกล้อง (ถ้ามี)
             var occluded = _cameraController != null ? _cameraController.OccludedColliders : null;
 
+            // ── ให้ความสำคัญ Structure มากกว่า Ground ──
+            // ถ้ามีทั้ง Structure hit และ Ground hit → เลือก Structure ก่อน
+            // เพื่อแก้ปัญหา Floor บาง → Ray ทะลุไปชนพื้นดินก่อน
+            RaycastHit? bestStructureHit = null;
+            RaycastHit? bestGroundHit = null;
+
             foreach (var hit in hits)
             {
-                // ข้าม collider ที่กล้องกำลังทำโปร่งใสอยู่
                 if (occluded != null && occluded.Contains(hit.collider)) continue;
 
-                _currentHitPos      = hit.point;
-                _currentHitNormal   = hit.normal;
-                _currentHitCollider = hit.collider;
+                bool isStructure = hit.collider.GetComponentInParent<StructureUnit>() != null;
+
+                if (isStructure && bestStructureHit == null)
+                {
+                    bestStructureHit = hit;
+                }
+                else if (!isStructure && bestGroundHit == null)
+                {
+                    bestGroundHit = hit;
+                }
+
+                // หยุดค้นหาเมื่อเจอทั้งสองแบบแล้ว
+                if (bestStructureHit != null && bestGroundHit != null) break;
+            }
+
+            // เลือก Structure hit ก่อน ถ้ามี (แม้จะไกลกว่าพื้นดินนิดหน่อย)
+            RaycastHit? chosen = bestStructureHit ?? bestGroundHit;
+
+            if (chosen.HasValue)
+            {
+                _currentHitPos      = chosen.Value.point;
+                _currentHitNormal   = chosen.Value.normal;
+                _currentHitCollider = chosen.Value.collider;
                 _hasValidTarget     = true;
-                break; // เจอ hit แรกที่ไม่ถูกบัง → หยุด
             }
         }
 
@@ -404,7 +429,8 @@ namespace Simulation.Building
                 float materialPrice = mat != null ? mat.priceModifier : 0f;
                 bool canAfford = _currentBudget >= (_selectedData.basePrice + materialPrice);
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
-                ghostBuilder.SetValid(canAfford && isClear);
+                bool hasSupport = HasStructuralSupport(placePos, _selectedData);
+                ghostBuilder.SetValid(canAfford && isClear && hasSupport);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
@@ -465,7 +491,8 @@ namespace Simulation.Building
                 ghostBuilder.UpdatePosition(placePos);
                 
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
-                ghostBuilder.SetValid(isClear);
+                bool hasSupport = HasStructuralSupport(placePos, _movingUnit.Data);
+                ghostBuilder.SetValid(isClear && hasSupport);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget)
@@ -924,8 +951,35 @@ namespace Simulation.Building
 
         private Vector3 CalculatePlacementPosition(Vector3 hitPoint)
         {
-            float x = useGridSnap ? Mathf.Round(hitPoint.x / gridSize) * gridSize : hitPoint.x;
-            float z = useGridSnap ? Mathf.Round(hitPoint.z / gridSize) * gridSize : hitPoint.z;
+            float rawX = hitPoint.x;
+            float rawZ = hitPoint.z;
+
+            // เมื่อคลิกด้านข้างของ Structure ให้เลื่อนตำแหน่งไปตาม normal
+            // เพื่อบังคับให้ snap ไปช่องถัดไปแทนช่องเดิม
+            // (แก้ปัญหา Mathf.Round banker's rounding ที่ปัดกลับช่องเดิม)
+            // สำหรับ Cylinder/ทรงกลม: snap normal ไปแกนหลัก (X หรือ Z) เพื่อไม่ให้วางเฉียง
+            bool isSideHit = Mathf.Abs(_currentHitNormal.y) < 0.5f;
+            if (isSideHit && _currentHitCollider != null
+                && _currentHitCollider.GetComponentInParent<StructureUnit>() != null)
+            {
+                // หาแกนหลักของ normal (X หรือ Z) เพื่อ snap ไปทิศที่ชัดเจน
+                float absX = Mathf.Abs(_currentHitNormal.x);
+                float absZ = Mathf.Abs(_currentHitNormal.z);
+
+                if (absX > absZ && absX > 0.3f)
+                {
+                    // แกน X เด่นกว่า → เลื่อนไปตาม X เท่านั้น
+                    rawX += Mathf.Sign(_currentHitNormal.x) * gridSize * 0.51f;
+                }
+                else if (absZ > 0.3f)
+                {
+                    // แกน Z เด่นกว่า → เลื่อนไปตาม Z เท่านั้น
+                    rawZ += Mathf.Sign(_currentHitNormal.z) * gridSize * 0.51f;
+                }
+            }
+
+            float x = useGridSnap ? Mathf.Round(rawX / gridSize) * gridSize : rawX;
+            float z = useGridSnap ? Mathf.Round(rawZ / gridSize) * gridSize : rawZ;
 
             float y = hitPoint.y;
 
@@ -942,10 +996,6 @@ namespace Simulation.Building
                     float bottomY = hitUnit.transform.position.y - hitUnitPivotToBottom;
                     // topY    = world Y of the top face of hitUnit
                     float topY    = hitUnit.transform.position.y + hitUnitPivotToTop;
-
-                    // Determine if the ray hit a SIDE face (horizontal normal)
-                    // vs a TOP/BOTTOM face (vertical normal)
-                    bool isSideHit = Mathf.Abs(_currentHitNormal.y) < 0.5f;
 
                     if (isSideHit)
                     {
@@ -1207,9 +1257,10 @@ namespace Simulation.Building
             float gridLimitX = (gridColumns * gridSize) * 0.5f;
             float gridLimitZ = (gridRows * gridSize) * 0.5f;
 
-            // 3. ตรวจสอบ X, Z (บวกเผื่อค่านิดหน่อยป้องกัน Floating point error)
-            if (minX < -gridLimitX - 0.01f || maxX > gridLimitX + 0.01f) return false;
-            if (minZ < -gridLimitZ - 0.01f || maxZ > gridLimitZ + 0.01f) return false;
+            // 3. ตรวจสอบ X, Z (เผื่อค่าครึ่ง grid เพื่อให้วางของตรงขอบได้)
+            float tolerance = gridSize * 0.5f + 0.01f;
+            if (minX < -gridLimitX - tolerance || maxX > gridLimitX + tolerance) return false;
+            if (minZ < -gridLimitZ - tolerance || maxZ > gridLimitZ + tolerance) return false;
 
             // 4. ตรวจสอบ Y (ห้ามจมดิน)
             // position.y คือตำแหน่ง Pivot, เราต้องหาตำแหน่งฐาน (Bottom)
@@ -1219,6 +1270,32 @@ namespace Simulation.Building
             if (bottomY < -0.01f) return false;
 
             return true;
+        }
+        // --------------------------------------------------------------------------------
+        // STRUCTURAL SUPPORT CHECK (ป้องกันวางลอยกลางอากาศ)
+        // --------------------------------------------------------------------------------
+
+        /// <summary>
+        /// ตรวจสอบว่าตำแหน่งที่จะวางมี "ฐานรองรับ" หรือไม่
+        /// ใช้เฉพาะ Structure ที่ตั้ง requiresSupport = true (เช่น เสา/Pillar)
+        /// Structure อื่น (Floor, Wall, etc.) ไม่ต้องเช็ค วางได้เลย
+        /// </summary>
+        private bool HasStructuralSupport(Vector3 position, StructureData data)
+        {
+            if (data == null || data.prefab == null) return true;
+
+            // ถ้าโครงสร้างนี้ไม่ต้องการฐานรองรับ → วางได้เลย
+            if (!data.requiresSupport) return true;
+
+            float pivotToBottom = GetPivotToBottomOffset(data.prefab);
+            Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
+
+            // ยิง Ray ลงจากจุดฐานของโครงสร้าง (เริ่มจากเหนือฐานนิดหนึ่ง → ลงล่าง)
+            LayerMask combinedMask = groundLayer | structureLayer;
+            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.05f, Vector3.down);
+
+            // ตรวจระยะสั้นๆ (0.3m) — ต้องมีของรองรับอยู่ใกล้ฐาน
+            return UnityEngine.Physics.Raycast(downRay, 0.3f, combinedMask);
         }
 
         // --------------------------------------------------------------------------------

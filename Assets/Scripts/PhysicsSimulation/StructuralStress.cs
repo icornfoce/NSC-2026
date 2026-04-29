@@ -177,8 +177,12 @@ namespace Simulation.Physics
                 _joint = GetComponent<Joint>();
                 if (_joint == null)
                 {
-                    // Joint was destroyed externally or never added — treat as break
-                    Break();
+                    // Joint was destroyed externally
+                    // เฉพาะตอน Simulate เท่านั้นถึงจะ Break (กันจอสั่นตอนลบของใน Build Mode)
+                    if (SimulationManager.Instance != null && SimulationManager.Instance.IsSimulating)
+                    {
+                        Break();
+                    }
                     return;
                 }
             }
@@ -277,6 +281,26 @@ namespace Simulation.Physics
 
         private void OnCollisionEnter(Collision collision)
         {
+            // ── Impact effect เมื่อชิ้นส่วนที่พังแล้วกระแทกพื้น/ของอื่น ──
+            if (_isBroken && collision.impulse.magnitude > 20f)
+            {
+                Building.BuildingSystem.Instance?.TriggerCameraShake(
+                    Mathf.Clamp(collision.impulse.magnitude * 0.01f, 0.3f, 2f));
+
+                var unit = GetComponent<Building.StructureUnit>();
+                if (unit != null && unit.CurrentMaterial != null)
+                {
+                    ContactPoint contact = collision.GetContact(0);
+
+                    if (unit.CurrentMaterial.breakVFX != null)
+                        Instantiate(unit.CurrentMaterial.breakVFX, contact.point, Quaternion.identity);
+
+                    if (unit.CurrentMaterial.breakSound != null)
+                        AudioSource.PlayClipAtPoint(unit.CurrentMaterial.breakSound, contact.point);
+                }
+                return;
+            }
+
             // If the impact is strong enough, trigger a small camera shake
             if (collision.impulse.magnitude > 50f)
             {
@@ -292,10 +316,13 @@ namespace Simulation.Physics
 
         /// <summary>
         /// Immediately breaks this structural element:
-        ///  1. Destroys the Joint (disconnects from the structure)
-        ///  2. Disables every Collider (no more collision — free fall)
-        ///  3. Fires the OnBreak event
-        ///  4. Optionally plays break VFX / SFX via StructureUnit
+        ///  1. Destroys ALL Joints (main + side — disconnects completely)
+        ///  2. Keeps Colliders ENABLED so the piece collides with the ground
+        ///  3. Restores physics collisions so pieces scatter instead of clumping
+        ///  4. Adds random scatter force for visual impact
+        ///  5. Fires the OnBreak event
+        ///  6. Plays break VFX / SFX
+        ///  7. Deactivates after a delay (5s) so SimulationManager can still Rewind
         /// </summary>
         private void Break()
         {
@@ -311,30 +338,32 @@ namespace Simulation.Physics
             // Trigger a strong camera shake when a structure breaks
             Building.BuildingSystem.Instance?.TriggerCameraShake(2.0f);
 
-            // 1. Destroy the joint
-            if (_joint != null)
-            {
-                Destroy(_joint);
-                _joint = null;
-            }
+            // 1. Destroy ALL joints (main + side joints) so pieces fully separate
+            Joint[] allJoints = GetComponents<Joint>();
+            foreach (var j in allJoints) Destroy(j);
+            _joint = null;
 
-            // 2. Disable all colliders so the broken piece cannot interact
-            foreach (var col in _colliders)
-            {
-                if (col != null)
-                {
-                    col.enabled = false;
-                }
-            }
+            // 2. KEEP colliders enabled — let pieces collide with ground and each other
+            //    (เดิมปิด Collider ทั้งหมด ทำให้ทะลุพื้น)
 
-            // 3. Ensure the Rigidbody is non-kinematic so it falls freely
+            // 3. Re-enable physics collisions with other structures
+            //    (IgnoreOverlappingCollisions ที่เรียกตอนวาง ทำให้ชิ้นส่วนทะลุกัน)
+            RestorePhysicsCollisions();
+
+            // 4. Ensure the Rigidbody is non-kinematic so it falls freely
             if (_rb != null)
             {
                 _rb.isKinematic = false;
                 _rb.useGravity = true;
+
+                // เพิ่มแรงสุ่มเล็กน้อยให้กระเด็นออก ไม่ตกเป็นก้อนเดียว
+                Vector3 scatter = Random.insideUnitSphere * 2f;
+                scatter.y = Mathf.Abs(scatter.y); // ดันขึ้นเล็กน้อย
+                _rb.AddForce(scatter, ForceMode.Impulse);
+                _rb.AddTorque(Random.insideUnitSphere * 1f, ForceMode.Impulse);
             }
 
-            // 4. Play break effects via StructureUnit if available
+            // 5. Play break effects via StructureUnit if available
             var unit = GetComponent<Building.StructureUnit>();
             if (unit != null)
             {
@@ -353,10 +382,56 @@ namespace Simulation.Physics
                 }
             }
 
-            // 5. Fire event
+            // 6. Fire event
             OnBreak?.Invoke(this);
 
-            // 6. Deactivate instead of Destroy so SimulationManager can restore on rewind
+            // 7. ซ่อนหลัง delay แทนซ่อนทันที เพื่อให้เห็นชิ้นส่วนร่วงลงพื้น
+            //    ใช้ SetActive(false) ไม่ใช่ Destroy เพื่อให้ SimulationManager Rewind ได้
+            StartCoroutine(DeactivateAfterDelay(5f));
+        }
+
+        /// <summary>
+        /// คืน physics collision กับ Structure อื่นทั้งหมดในฉาก
+        /// เพื่อให้ชิ้นส่วนที่พังแล้วชนกับของอื่นได้ ไม่ทะลุกัน
+        /// </summary>
+        private void RestorePhysicsCollisions()
+        {
+            Collider[] myColliders = GetComponentsInChildren<Collider>();
+            if (myColliders.Length == 0) return;
+
+            Building.StructureUnit[] allUnits =
+                FindObjectsByType<Building.StructureUnit>(FindObjectsSortMode.None);
+
+            foreach (var unit in allUnits)
+            {
+                if (unit == null || unit.gameObject == gameObject) continue;
+
+                Collider[] otherCols = unit.GetComponentsInChildren<Collider>();
+                foreach (var myCol in myColliders)
+                {
+                    foreach (var otherCol in otherCols)
+                    {
+                        if (myCol != null && otherCol != null)
+                            UnityEngine.Physics.IgnoreCollision(myCol, otherCol, false);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// ปิด Collider + ซ่อน GameObject หลังจาก delay
+        /// ใช้แทน SetActive(false) ทันที เพื่อให้เห็นชิ้นส่วนร่วงลงพื้น
+        /// </summary>
+        private System.Collections.IEnumerator DeactivateAfterDelay(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+
+            // ปิด Collider ก่อนซ่อน (cleanup)
+            foreach (var col in _colliders)
+            {
+                if (col != null) col.enabled = false;
+            }
+
             gameObject.SetActive(false);
         }
 
@@ -478,6 +553,9 @@ namespace Simulation.Physics
         /// </summary>
         public void ResetFull()
         {
+            // หยุด Coroutine ที่ค้างอยู่ (เช่น DeactivateAfterDelay) เมื่อ Rewind
+            StopAllCoroutines();
+
             _isBroken = false;
             _currentHP = baseHP;
             _lowStressTimer = 0f;
