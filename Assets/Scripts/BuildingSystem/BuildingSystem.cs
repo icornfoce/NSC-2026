@@ -798,8 +798,12 @@ namespace Simulation.Building
             Joint mainJoint = structureObj.GetComponent<Joint>();
             Rigidbody mainConnected = mainJoint != null ? mainJoint.connectedBody : null;
 
-            float maxHorizDist = gridSize * 1.5f;
-            float maxVertDist = heightStep * 1.2f;
+            Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
+            if (myColliders.Length == 0) return;
+
+            // บังคับให้อัปเดต Bounds ของ Collider ทันทีหลังจาก SetActive(true)
+            // ป้องกันปัญหา Bounds เป็น (0,0,0) ในเฟรมแรกที่ถูกสร้าง ทำให้หาชิ้นส่วนรอบๆ ไม่เจอ
+            UnityEngine.Physics.SyncTransforms();
 
             foreach (var unit in _placedStructures)
             {
@@ -808,12 +812,27 @@ namespace Simulation.Building
                 Rigidbody otherRb = unit.GetComponent<Rigidbody>();
                 if (otherRb == null || otherRb == mainConnected) continue;
 
-                // ตรวจสอบระยะห่าง (แยก horizontal กับ vertical)
-                Vector3 diff = unit.transform.position - structureObj.transform.position;
-                float horizDist = new Vector2(diff.x, diff.z).magnitude;
-                float vertDist = Mathf.Abs(diff.y);
+                bool isAdjacent = false;
+                Collider[] otherColliders = unit.GetComponentsInChildren<Collider>();
 
-                bool isAdjacent = (horizDist <= maxHorizDist && vertDist <= maxVertDist);
+                // ใช้ Bounds Expansion ในการเช็คว่าของอยู่ติดกันหรือไม่
+                // วิธีนี้รองรับชิ้นส่วนทุกขนาด (ช่วยแก้ปัญหา Connected body ไม่ยอมต่อกับของที่กว้างกว่า 1 ช่อง)
+                foreach (var myCol in myColliders)
+                {
+                    Bounds expandedBounds = myCol.bounds;
+                    expandedBounds.Expand(0.2f); // ขยายขอบเขตออกเล็กน้อยเพื่อหาของที่อยู่ติดกัน
+
+                    foreach (var otherCol in otherColliders)
+                    {
+                        if (expandedBounds.Intersects(otherCol.bounds))
+                        {
+                            isAdjacent = true;
+                            break;
+                        }
+                    }
+                    if (isAdjacent) break;
+                }
+
                 if (!isAdjacent) continue;
 
                 // สร้าง FixedJoint เชื่อมกับเพื่อนบ้าน
@@ -1003,7 +1022,7 @@ namespace Simulation.Building
                         // so structures can be built outward horizontally
                         y = bottomY;
                     }
-                    else if (hitUnit.Data.placementSinkThrough)
+                    else if (hitUnit.Data.placementSinkThrough && (_selectedData == null || !_selectedData.requiresSupport))
                     {
                         // Sink-through: start from the BOTTOM of the floor/slab
                         // so placed wall shares the same ground level as walls on bare ground
@@ -1011,7 +1030,7 @@ namespace Simulation.Building
                     }
                     else
                     {
-                        // Normal stacking: place on TOP of the hit structure
+                        // Normal stacking: place on TOP of the hit structure (e.g. Pillar on Floor)
                         y = topY;
                     }
                 }
@@ -1290,12 +1309,14 @@ namespace Simulation.Building
             float pivotToBottom = GetPivotToBottomOffset(data.prefab);
             Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
 
-            // ยิง Ray ลงจากจุดฐานของโครงสร้าง (เริ่มจากเหนือฐานนิดหนึ่ง → ลงล่าง)
             LayerMask combinedMask = groundLayer | structureLayer;
-            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.05f, Vector3.down);
+            
+            // เพิ่มความสูงจุดเริ่มต้นขึ้นไปอีก (0.2f) เพื่อรับประกันว่า Ray จะเริ่มเหนือพื้นแน่นอน
+            // แม้ว่าฐานของเสาจะพอดีกับผิวด้านบนของพื้นก็ตาม
+            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.2f, Vector3.down);
 
-            // ตรวจระยะสั้นๆ (0.3m) — ต้องมีของรองรับอยู่ใกล้ฐาน
-            return UnityEngine.Physics.Raycast(downRay, 0.3f, combinedMask);
+            // ตรวจระยะให้ครอบคลุมลงมาถึงพื้น
+            return UnityEngine.Physics.Raycast(downRay, 0.4f, combinedMask);
         }
 
         // --------------------------------------------------------------------------------

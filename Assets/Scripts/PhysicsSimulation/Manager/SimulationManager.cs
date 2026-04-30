@@ -32,7 +32,7 @@ namespace Simulation.Physics
             public StructureUnit unit;
             public Vector3 position;
             public Quaternion rotation;
-            public Rigidbody connectedBody; // Joint เชื่อมกับ Rigidbody ตัวไหน (null = world/ground)
+            public List<Rigidbody> connectedBodies; // เก็บ Joint ทุกตัวที่ต่ออยู่ (Main + Side joints)
             public bool wasActive;
         }
 
@@ -155,14 +155,14 @@ namespace Simulation.Physics
                     position = unit.transform.position,
                     rotation = unit.transform.rotation,
                     wasActive = unit.gameObject.activeSelf,
-                    connectedBody = null
+                    connectedBodies = new List<Rigidbody>()
                 };
 
-                // บันทึก Joint connection (เชื่อมกับใคร)
-                var joint = unit.GetComponent<Joint>();
-                if (joint != null)
+                // บันทึก Joint connection ทุกตัว (ทั้ง Main และ Side)
+                var joints = unit.GetComponents<Joint>();
+                foreach (var joint in joints)
                 {
-                    snap.connectedBody = joint.connectedBody; // null = connected to world
+                    snap.connectedBodies.Add(joint.connectedBody); // null = connected to world
                 }
 
                 _snapshots.Add(snap);
@@ -171,6 +171,7 @@ namespace Simulation.Physics
 
         private void RestoreSnapshots()
         {
+            // ── Phase 1: คืนตำแหน่ง, ลบ Joint เก่า, รีเซ็ตสถานะ ──
             foreach (var snap in _snapshots)
             {
                 if (snap.unit == null) continue; // ถูก Destroy จริงๆ (ไม่น่าเกิด)
@@ -198,15 +199,57 @@ namespace Simulation.Physics
                     stress.ResetFull();
                 }
 
-                // 5. ลบ Joint เก่า แล้วสร้างใหม่ตาม Snapshot
+                // 5. ลบ Joint เก่าทิ้งให้หมด (ต้องใช้ DestroyImmediate เพื่อให้หายไปทันที ไม่ค้างในเฟรม)
                 Joint[] existingJoints = snap.unit.GetComponents<Joint>();
-                foreach (var j in existingJoints) Destroy(j);
+                foreach (var j in existingJoints) DestroyImmediate(j);
+            }
 
-                FixedJoint newJoint = snap.unit.gameObject.AddComponent<FixedJoint>();
-                newJoint.connectedBody = snap.connectedBody;
+            // ── บังคับอัปเดตฟิสิกส์ ──
+            // สำคัญมาก! หลังจากย้ายตำแหน่งกลับมาแล้ว ต้องสั่งให้ Unity อัปเดตตำแหน่ง Collider ใหม่ทันที
+            // ไม่งั้นตอนสร้าง Joint ใหม่ มันจะใช้ตำแหน่งเก่าที่เพิ่งพังร่วงลงไป ทำให้เกิดบั๊กระเบิดกระจาย
+            UnityEngine.Physics.SyncTransforms();
+
+            // ── Phase 2: สร้าง Joint ใหม่ตามตำแหน่งที่ถูกต้อง ──
+            foreach (var snap in _snapshots)
+            {
+                if (snap.unit == null) continue;
+
+                if (snap.connectedBodies != null)
+                {
+                    foreach (var connectedBody in snap.connectedBodies)
+                    {
+                        FixedJoint newJoint = snap.unit.gameObject.AddComponent<FixedJoint>();
+                        newJoint.connectedBody = connectedBody;
+                    }
+                }
             }
 
             _snapshots.Clear();
+
+            // คืนค่า IgnoreCollision ให้กับทุกชิ้นส่วน (ป้องกัน Bug ของระเบิดกระจายตอนกด Start รอบสอง)
+            // เพราะตอนที่ของพังไปแล้ว ระบบจะเปิดให้ชนกันใหม่ (RestorePhysicsCollisions) 
+            // เมื่อย้อนเวลากลับมา (Rewind) จึงต้องสั่งให้มันเลิกชนกันอีกรอบ เหมือนตอนเพิ่งวางเสร็จ
+            StructureUnit[] allUnits = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
+            for (int i = 0; i < allUnits.Length; i++)
+            {
+                if (allUnits[i] == null) continue;
+                Collider[] cols1 = allUnits[i].GetComponentsInChildren<Collider>(true);
+                
+                for (int j = i + 1; j < allUnits.Length; j++)
+                {
+                    if (allUnits[j] == null) continue;
+                    Collider[] cols2 = allUnits[j].GetComponentsInChildren<Collider>(true);
+                    
+                    foreach (var c1 in cols1)
+                    {
+                        foreach (var c2 in cols2)
+                        {
+                            if (c1 != null && c2 != null)
+                                UnityEngine.Physics.IgnoreCollision(c1, c2, true);
+                        }
+                    }
+                }
+            }
         }
 
         // ────────────────────────────────────────────────────────────────

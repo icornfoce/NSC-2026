@@ -221,6 +221,8 @@ namespace Simulation.UI
         {
             if (Simulation.Physics.SimulationManager.Instance != null)
                 Simulation.Physics.SimulationManager.Instance.StartSimulation();
+                
+            ResetTimeSpeed();
         }
 
         /// <summary>
@@ -230,6 +232,8 @@ namespace Simulation.UI
         {
             if (Simulation.Physics.SimulationManager.Instance != null)
                 Simulation.Physics.SimulationManager.Instance.StopSimulation();
+                
+            ResetTimeSpeed();
         }
 
         /// <summary>
@@ -266,6 +270,53 @@ namespace Simulation.UI
         {
             PlayClickSound();
             if (BuildingSystem.Instance != null) BuildingSystem.Instance.Redo();
+        }
+
+        // --------------------------------------------------------------------------------
+        // Time Controls
+        // --------------------------------------------------------------------------------
+
+        private float[] _timeScaleSteps = { 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+        private int _currentTimeStepIndex = 2; // เริ่มต้นที่ 1.0x (Index 2)
+
+        /// <summary>
+        /// รีเซ็ตความเร็วกลับเป็น 1.0x
+        /// </summary>
+        public void ResetTimeSpeed()
+        {
+            _currentTimeStepIndex = 2;
+            ApplyCurrentTimeScale();
+        }
+
+        /// <summary>
+        /// เพิ่มความเร็วเวลา (เลื่อนขึ้นทีละสเต็ป)
+        /// </summary>
+        public void IncreaseTimeSpeed()
+        {
+            if (_currentTimeStepIndex < _timeScaleSteps.Length - 1)
+            {
+                _currentTimeStepIndex++;
+                ApplyCurrentTimeScale();
+            }
+        }
+
+        /// <summary>
+        /// ลดความเร็วเวลา (เลื่อนลงทีละสเต็ป)
+        /// </summary>
+        public void DecreaseTimeSpeed()
+        {
+            if (_currentTimeStepIndex > 0)
+            {
+                _currentTimeStepIndex--;
+                ApplyCurrentTimeScale();
+            }
+        }
+
+        private void ApplyCurrentTimeScale()
+        {
+            float newScale = _timeScaleSteps[_currentTimeStepIndex];
+            Time.timeScale = newScale;
+            Debug.Log($"<color=cyan>⏱ Time Scale set to {newScale}x</color>");
         }
     }
 }
