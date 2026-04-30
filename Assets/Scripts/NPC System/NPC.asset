@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
+  m_Name: NPC
+  m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
+  structureName: NPC
+  basePrice: 0
+  baseMass: 0
+  baseHP: 0
+  size: {x: 1, y: 1, z: 1}
+  allowOverlap: 0
+  placementSinkThrough: 0
+  requiresSupport: 0
+  placeOnStructureOnly: 1
+  baseMaxCompression: 1000
+  baseMaxTension: 1000
+  prefab: {fileID: 5011119252033980853, guid: bab22a373db21a244a57cd3e5bc6a27e, type: 3}
+  defaultMaterial: {fileID: 0}
+  breakVFX: {fileID: 0}

@@ -17,6 +17,9 @@ namespace Simulation.Data
         public bool placementSinkThrough = false;
         [Tooltip("If true, this structure requires ground or another structure directly beneath it to be placed. Enable for Pillars to prevent floating placement.")]
         public bool requiresSupport = false;
+        
+        [Tooltip("If true, this structure can ONLY be placed on top of other structures, not on the ground.")]
+        public bool placeOnStructureOnly = false;
 
         [Header("Physical Limits")]
         [Tooltip("Base maximum compression force this structure can withstand (N). Material modifier adds on top.")]

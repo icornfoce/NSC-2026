@@ -430,7 +430,8 @@ namespace Simulation.Building
                 bool canAfford = _currentBudget >= (_selectedData.basePrice + materialPrice);
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
                 bool hasSupport = HasStructuralSupport(placePos, _selectedData);
-                ghostBuilder.SetValid(canAfford && isClear && hasSupport);
+                bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
+                ghostBuilder.SetValid(canAfford && isClear && hasSupport && isOnStructure);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
@@ -492,7 +493,8 @@ namespace Simulation.Building
                 
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
                 bool hasSupport = HasStructuralSupport(placePos, _movingUnit.Data);
-                ghostBuilder.SetValid(isClear && hasSupport);
+                bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
+                ghostBuilder.SetValid(isClear && hasSupport && isOnStructure);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget)

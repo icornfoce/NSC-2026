@@ -1,6 +1,9 @@
 using UnityEngine;
 using System.Collections.Generic;
 using Simulation.Building;
+using Simulation.Character;
+using Unity.AI.Navigation;
+using UnityEngine.AI;
 
 namespace Simulation.Physics
 {
@@ -17,6 +20,11 @@ namespace Simulation.Physics
 
         [Header("State")]
         [SerializeField] private bool isSimulating = false;
+
+        [Header("Character System")]
+        [Tooltip("Prefab ของคนตัวจริง (ที่มี PersonAI) ที่จะเกิดมาตอนกด Start")]
+        [SerializeField] private GameObject personAIPrefab;
+        private List<GameObject> _spawnedCharacters = new List<GameObject>();
 
         public bool IsSimulating => isSimulating;
 
@@ -89,10 +97,41 @@ namespace Simulation.Physics
             // 2. บันทึก Snapshot ก่อนเริ่ม Simulate
             SaveSnapshots();
 
-            // 3. ปลดล็อค Kinematic เพื่อให้ฟิสิกส์ทำงาน
+            // ปิด Agent ทั้งหมดชั่วคราวก่อนอบ เพื่อไม่ให้เกิด Error ว่าหา NavMesh ไม่เจอ
+            NavMeshAgent[] existingAgents = FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
+            foreach (var agent in existingAgents)
+            {
+                agent.enabled = false;
+            }
+
+            // 2.2 Bake NavMesh สดๆ ก่อนให้คนเดิน
+            NavMeshSurface surface = GetComponent<NavMeshSurface>();
+            if (surface == null)
+            {
+                surface = gameObject.AddComponent<NavMeshSurface>();
+            }
+            
+            // ตั้งค่าพื้นผิวให้ใช้อบ
+            surface.collectObjects = CollectObjects.All;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders; // ใช้ Collider เป็นตัวคำนวณพื้นเดิน
+
+            surface.BuildNavMesh();
+
+            // 2.5 เรียกคนออกมาเดิน
+            SpawnCharacters();
+
+            // 3. ปลดล็อค Kinematic เพื่อให้ฟิสิกส์ทำงาน และปลุก AI ที่วางไว้
             foreach (var snap in _snapshots)
             {
                 if (snap.unit == null) continue;
+                
+                // ถ้าเป็นตัวละครที่เคยวางไว้ ให้เปิด AI
+                PersonAI ai = snap.unit.GetComponent<PersonAI>();
+                if (ai != null)
+                {
+                    ai.InitializeAgent();
+                }
+
                 Rigidbody rb = snap.unit.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
@@ -117,6 +156,9 @@ namespace Simulation.Physics
         {
             if (!isSimulating) return;
             isSimulating = false;
+
+            // ลบตัวละครจริงทิ้ง
+            ClearCharacters();
 
             // ย้อนกลับไปสถานะก่อน Start (Rewind)
             RestoreSnapshots();
@@ -187,9 +229,12 @@ namespace Simulation.Physics
                 Rigidbody rb = snap.unit.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
-                    rb.isKinematic = true;
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
+                    if (!rb.isKinematic)
+                    {
+                        rb.linearVelocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                        rb.isKinematic = true;
+                    }
                 }
 
                 // 4. รีเซ็ต StructuralStress (HP, isBroken, colliders)
@@ -253,6 +298,60 @@ namespace Simulation.Physics
         }
 
         // ────────────────────────────────────────────────────────────────
+        // Character System
+        // ────────────────────────────────────────────────────────────────
+
+        private void SpawnCharacters()
+        {
+            ClearCharacters();
+
+            if (personAIPrefab == null) return;
+
+            PersonSpawner[] spawners = FindObjectsByType<PersonSpawner>(FindObjectsSortMode.None);
+            PersonTarget[] targets = FindObjectsByType<PersonTarget>(FindObjectsSortMode.None);
+
+            if (spawners.Length > 0 && targets.Length > 0)
+            {
+                // สำหรับแต่ละ Target ให้เกิดคนที่ Spawner อันแรกสุดแล้วเดินไปหา
+                foreach (var target in targets)
+                {
+                    PersonSpawner spawner = spawners[0]; // หรือถ้ามีหลายทางเข้าก็ Random.Range ได้
+                    
+                    // ป้องกันการเกิดนอก NavMesh (เช่น จุด Spawn จมดิน หรือลอย)
+                    Vector3 spawnPos = spawner.transform.position;
+                    if (UnityEngine.AI.NavMesh.SamplePosition(spawnPos, out UnityEngine.AI.NavMeshHit hit, 2.0f, UnityEngine.AI.NavMesh.AllAreas))
+                    {
+                        spawnPos = hit.position; // ใช้จุดที่อยู่บนพื้น NavMesh จริงๆ
+                    }
+                    else
+                    {
+                        // ถ้าหาไม่เจอจริงๆ ลองขยับขึ้นนิดนึง
+                        spawnPos += Vector3.up * 0.5f; 
+                    }
+
+                    GameObject charObj = Instantiate(personAIPrefab, spawnPos, Quaternion.identity);
+                    _spawnedCharacters.Add(charObj);
+
+                    PersonAI ai = charObj.GetComponent<PersonAI>();
+                    if (ai != null)
+                    {
+                        ai.InitializeAgent(); // เพิ่มบรรทัดนี้เพื่อเปิด Agent อย่างปลอดภัย
+                        ai.SetTarget(target.transform);
+                    }
+                }
+            }
+        }
+
+        private void ClearCharacters()
+        {
+            foreach (var charObj in _spawnedCharacters)
+            {
+                if (charObj != null) Destroy(charObj);
+            }
+            _spawnedCharacters.Clear();
+        }
+
+        // ────────────────────────────────────────────────────────────────
         // Helpers
         // ────────────────────────────────────────────────────────────────
 
@@ -265,9 +364,12 @@ namespace Simulation.Physics
                 if (rb != null)
                 {
                     // แช่แข็งโครงสร้าง
-                    rb.isKinematic = true;
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
+                    if (!rb.isKinematic)
+                    {
+                        rb.linearVelocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                        rb.isKinematic = true;
+                    }
                 }
             }
         }

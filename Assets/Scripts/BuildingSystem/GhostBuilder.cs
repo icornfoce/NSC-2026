@@ -56,6 +56,19 @@ namespace Simulation.Building
             var existingStress = _ghostObject.GetComponent<Simulation.Physics.StructuralStress>();
             if (existingStress != null) Destroy(existingStress);
 
+            // Prevent PersonTarget from overriding the ghost material in its Start()
+            var existingPersonTarget = _ghostObject.GetComponent<Simulation.Character.PersonTarget>();
+            if (existingPersonTarget != null) Destroy(existingPersonTarget);
+
+            var existingPersonSpawner = _ghostObject.GetComponent<Simulation.Character.PersonSpawner>();
+            if (existingPersonSpawner != null) Destroy(existingPersonSpawner);
+
+            var existingPersonAI = _ghostObject.GetComponent<Simulation.Character.PersonAI>();
+            if (existingPersonAI != null) Destroy(existingPersonAI);
+
+            var existingNavMeshAgent = _ghostObject.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (existingNavMeshAgent != null) Destroy(existingNavMeshAgent);
+
             foreach (var existingJoint in _ghostObject.GetComponentsInChildren<Joint>())
             {
                 Destroy(existingJoint);
