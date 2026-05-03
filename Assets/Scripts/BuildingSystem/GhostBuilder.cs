@@ -14,6 +14,7 @@ namespace Simulation.Building
         [SerializeField] private Color invalidColor = new Color(1f, 0f, 0f, 0.5f);
 
         private GameObject _ghostObject;
+        private List<GameObject> _ghostInstances = new List<GameObject>();
         private List<Renderer> _ghostRenderers = new List<Renderer>();
         private List<Material> _ghostMaterials = new List<Material>();
         private float _currentRotation = 0f;
@@ -25,112 +26,116 @@ namespace Simulation.Building
 
         /// <summary>
         /// Create a ghost preview from a prefab.
-        /// Disables colliders and Rigidbodies, applies transparent material.
+        /// This serves as the template for multiple instances.
         /// </summary>
         public void CreateGhost(GameObject prefab)
         {
             DestroyGhost();
 
-            // Instantiate at default world rotation so it matches the placed object
+            // Instantiate template at origin, hidden
             _ghostObject = Instantiate(prefab, Vector3.zero, Quaternion.identity);
-            _ghostObject.name = "Ghost_Preview";
+            _ghostObject.name = "Ghost_Template";
+            _ghostObject.SetActive(false);
             _currentRotation = 0f;
 
+            SetupGhost(_ghostObject);
+            
+            // Add the first instance immediately
+            AddInstance(Vector3.zero);
+            SetValid(true);
+        }
+
+        private void SetupGhost(GameObject obj)
+        {
             // Disable all colliders
-            foreach (var col in _ghostObject.GetComponentsInChildren<Collider>())
+            foreach (var col in obj.GetComponentsInChildren<Collider>())
             {
                 col.enabled = false;
             }
 
             // Disable all Rigidbodies
-            foreach (var rb in _ghostObject.GetComponentsInChildren<Rigidbody>())
+            foreach (var rb in obj.GetComponentsInChildren<Rigidbody>())
             {
                 rb.isKinematic = true;
             }
 
-            // Remove StructureUnit if present on prefab
-            var existingUnit = _ghostObject.GetComponent<StructureUnit>();
-            if (existingUnit != null) Destroy(existingUnit);
+            // Remove logic components
+            Destroy(obj.GetComponent<StructureUnit>());
+            Destroy(obj.GetComponent<Simulation.Physics.StructuralStress>());
+            Destroy(obj.GetComponent<Simulation.Character.PersonTarget>());
+            Destroy(obj.GetComponent<Simulation.Character.PersonSpawner>());
+            Destroy(obj.GetComponent<Simulation.Character.PersonAI>());
+            Destroy(obj.GetComponent<UnityEngine.AI.NavMeshAgent>());
+            foreach (var j in obj.GetComponentsInChildren<Joint>()) Destroy(j);
+        }
 
-            // Remove StructuralStress and Joints to prevent simulated breaking
-            var existingStress = _ghostObject.GetComponent<Simulation.Physics.StructuralStress>();
-            if (existingStress != null) Destroy(existingStress);
+        private void AddInstance(Vector3 pos)
+        {
+            GameObject inst = Instantiate(_ghostObject, pos, Quaternion.Euler(0f, _currentRotation, 0f));
+            inst.name = "Ghost_Instance";
+            inst.SetActive(true);
+            _ghostInstances.Add(inst);
 
-            // Prevent PersonTarget from overriding the ghost material in its Start()
-            var existingPersonTarget = _ghostObject.GetComponent<Simulation.Character.PersonTarget>();
-            if (existingPersonTarget != null) Destroy(existingPersonTarget);
-
-            var existingPersonSpawner = _ghostObject.GetComponent<Simulation.Character.PersonSpawner>();
-            if (existingPersonSpawner != null) Destroy(existingPersonSpawner);
-
-            var existingPersonAI = _ghostObject.GetComponent<Simulation.Character.PersonAI>();
-            if (existingPersonAI != null) Destroy(existingPersonAI);
-
-            var existingNavMeshAgent = _ghostObject.GetComponent<UnityEngine.AI.NavMeshAgent>();
-            if (existingNavMeshAgent != null) Destroy(existingNavMeshAgent);
-
-            foreach (var existingJoint in _ghostObject.GetComponentsInChildren<Joint>())
-            {
-                Destroy(existingJoint);
-            }
-
-            // Collect renderers and create transparent ghost materials
-            _ghostRenderers.Clear();
-            _ghostMaterials.Clear();
-
-            foreach (var rend in _ghostObject.GetComponentsInChildren<Renderer>())
+            foreach (var rend in inst.GetComponentsInChildren<Renderer>())
             {
                 _ghostRenderers.Add(rend);
-                
-                // Use temp materials so we don't modify the prefab's materials
-                Material[] sharedMaterials = rend.sharedMaterials;
-                Material[] ghostMats = new Material[sharedMaterials.Length];
-
-                for (int i = 0; i < sharedMaterials.Length; i++)
+                foreach (var mat in rend.materials)
                 {
-                    ghostMats[i] = new Material(sharedMaterials[i]);
-                    
-                    // Switch to transparent rendering (Standard Shader fallback)
-                    if (ghostMats[i].HasProperty("_Mode")) ghostMats[i].SetFloat("_Mode", 3);
-                    
-                    ghostMats[i].SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                    ghostMats[i].SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                    ghostMats[i].SetInt("_ZWrite", 0);
-                    ghostMats[i].DisableKeyword("_ALPHATEST_ON");
-                    ghostMats[i].EnableKeyword("_ALPHABLEND_ON");
-                    ghostMats[i].DisableKeyword("_ALPHAPREMULTIPLY_ON");
-                    ghostMats[i].renderQueue = 3000;
-                    
-                    _ghostMaterials.Add(ghostMats[i]);
+                    // Apply transparency settings to new materials
+                    SetupTransparentMaterial(mat);
+                    _ghostMaterials.Add(mat);
                 }
-                rend.materials = ghostMats;
             }
-
-            SetValid(true);
         }
 
-        /// <summary>
-        /// Destroy the current ghost object.
-        /// </summary>
-        public void DestroyGhost()
+        private void SetupTransparentMaterial(Material mat)
         {
-            if (_ghostObject != null)
-            {
-                Destroy(_ghostObject);
-                _ghostObject = null;
-            }
-            _ghostRenderers.Clear();
-            _ghostMaterials.Clear();
-            _currentRotation = 0f;
+            if (mat.HasProperty("_Mode")) mat.SetFloat("_Mode", 3);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetInt("_ZWrite", 0);
+            mat.DisableKeyword("_ALPHATEST_ON");
+            mat.EnableKeyword("_ALPHABLEND_ON");
+            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            mat.renderQueue = 3000;
         }
 
         /// <summary>
-        /// Update the ghost position (already snapped to grid).
+        /// Syncs ghost instances to a list of positions.
         /// </summary>
-        public void UpdatePosition(Vector3 snappedPosition)
+        public void UpdateGhosts(List<Vector3> positions, float rotation, bool isValid)
         {
             if (_ghostObject == null) return;
-            _ghostObject.transform.position = snappedPosition;
+            _currentRotation = rotation;
+
+            // Adjust instance count
+            while (_ghostInstances.Count < positions.Count)
+            {
+                AddInstance(Vector3.zero);
+            }
+            while (_ghostInstances.Count > positions.Count)
+            {
+                GameObject last = _ghostInstances[_ghostInstances.Count - 1];
+                _ghostInstances.RemoveAt(_ghostInstances.Count - 1);
+                
+                // Cleanup materials and renderers for this instance
+                Renderer[] rends = last.GetComponentsInChildren<Renderer>();
+                foreach(var r in rends) _ghostRenderers.Remove(r);
+                // Note: material cleanup is harder without tracking which mat belongs to which instance, 
+                // but SetValid will handle it as long as we clear the list and rebuild if needed.
+                // For performance, we'll just clear and rebuild the mat list in SetValid.
+                
+                Destroy(last);
+            }
+
+            // Update positions and rotations
+            for (int i = 0; i < positions.Count; i++)
+            {
+                _ghostInstances[i].transform.position = positions[i];
+                _ghostInstances[i].transform.rotation = Quaternion.Euler(0f, rotation, 0f);
+            }
+
+            SetValid(isValid);
         }
 
         /// <summary>
@@ -147,23 +152,58 @@ namespace Simulation.Building
         public void SetRotation(float angle)
         {
             _currentRotation = angle;
-            if (_ghostObject != null)
+            foreach (var inst in _ghostInstances)
             {
-                _ghostObject.transform.rotation = Quaternion.Euler(0f, _currentRotation, 0f);
+                if (inst != null) inst.transform.rotation = Quaternion.Euler(0f, _currentRotation, 0f);
             }
         }
 
         /// <summary>
-        /// Set validity state — changes ghost color to green (valid) or red (invalid).
+        /// Update the ghost position (compatibility for single placement).
+        /// </summary>
+        public void UpdatePosition(Vector3 snappedPosition)
+        {
+            List<Vector3> pos = new List<Vector3> { snappedPosition };
+            UpdateGhosts(pos, _currentRotation, _isValid);
+        }
+
+        /// <summary>
+        /// Destroy the current ghost object and all instances.
+        /// </summary>
+        public void DestroyGhost()
+        {
+            if (_ghostObject != null) Destroy(_ghostObject);
+            foreach (var inst in _ghostInstances) if (inst != null) Destroy(inst);
+            
+            _ghostInstances.Clear();
+            _ghostObject = null;
+            _ghostRenderers.Clear();
+            _ghostMaterials.Clear();
+            _currentRotation = 0f;
+        }
+
+        /// <summary>
+        /// Set validity state — changes all ghost instances' color.
         /// </summary>
         public void SetValid(bool isValid)
         {
             _isValid = isValid;
             Color targetColor = isValid ? validColor : invalidColor;
 
-            foreach (var mat in _ghostMaterials)
+            // Re-collect materials if list is empty or inconsistent
+            if (_ghostMaterials.Count == 0 && _ghostRenderers.Count > 0)
             {
-                mat.color = targetColor;
+                foreach(var rend in _ghostRenderers)
+                {
+                    if (rend == null) continue;
+                    foreach(var mat in rend.materials) _ghostMaterials.Add(mat);
+                }
+            }
+
+            for (int i = _ghostMaterials.Count - 1; i >= 0; i--)
+            {
+                if (_ghostMaterials[i] == null) { _ghostMaterials.RemoveAt(i); continue; }
+                _ghostMaterials[i].color = targetColor;
             }
         }
 

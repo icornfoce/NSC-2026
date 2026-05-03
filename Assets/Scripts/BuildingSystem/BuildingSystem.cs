@@ -107,6 +107,14 @@ namespace Simulation.Building
         public int GridRows => gridRows;
         public float GetGridSize => gridSize;
 
+        /// <summary>
+        /// ตั้งงบประมาณจากภายนอก (เช่น MissionManager)
+        /// </summary>
+        public void SetBudget(float amount)
+        {
+            _currentBudget = amount;
+        }
+
         private void Awake()
         {
             if (Instance == null) Instance = this;
@@ -408,9 +416,15 @@ namespace Simulation.Building
         // PLACEMENT MODE
         // --------------------------------------------------------------------------------
 
+        // Drag building state
+        private bool _isDragging = false;
+        private Vector3 _dragStartPos;
+        private List<Vector3> _dragPositions = new List<Vector3>();
+
         private void HandlePlacementMode()
         {
             if (Input.GetMouseButtonDown(1)) { ExitMode(); return; }
+            
             // Walls and Doors auto-rotate based on grid edge, so skip manual rotation
             if (Input.GetKeyDown(KeyCode.R) && _selectedData != null
                 && _selectedData.structureType != StructureType.Wall
@@ -428,31 +442,148 @@ namespace Simulation.Building
 
             if (_hasValidTarget && ghostBuilder.HasGhost)
             {
-                Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
-                ghostBuilder.UpdatePosition(placePos);
-
-                MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
-                float materialPrice = mat != null ? mat.priceModifier : 0f;
-                bool canAfford = _currentBudget >= (_selectedData.basePrice + materialPrice);
-                bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
-                bool hasSupport = HasStructuralSupport(placePos, _selectedData);
-                bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
-
-                // Door-specific: must be placed on an existing wall
-                bool doorValid = true;
-                if (_selectedData.structureType == StructureType.Door)
+                Vector3 currentPos = CalculatePlacementPosition(_currentHitPos);
+                
+                if (Input.GetMouseButtonDown(0))
                 {
-                    doorValid = FindWallAtPosition(placePos, ghostBuilder.CurrentRotation) != null;
+                    _isDragging = true;
+                    _dragStartPos = currentPos;
                 }
 
-                ghostBuilder.SetValid(canAfford && isClear && hasSupport && isOnStructure && doorValid);
+                if (_isDragging)
+                {
+                    _dragPositions = CalculateDragPositions(_dragStartPos, currentPos);
+                }
+                else
+                {
+                    _dragPositions.Clear();
+                    _dragPositions.Add(currentPos);
+                }
+
+                // Update ghost previews
+                bool allValid = true;
+                float totalCost = 0f;
+                MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
+                float materialPrice = mat != null ? mat.priceModifier : 0f;
+                float itemPrice = _selectedData.basePrice + materialPrice;
+                
+                foreach (var pos in _dragPositions)
+                {
+                    bool isClear = IsAreaClear(pos, ghostBuilder.CurrentRotation, _selectedData);
+                    bool hasSupport = HasStructuralSupport(pos, _selectedData);
+                    bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
+                    
+                    bool doorValid = true;
+                    if (_selectedData.structureType == StructureType.Door)
+                    {
+                        doorValid = FindWallAtPosition(pos, ghostBuilder.CurrentRotation) != null;
+                    }
+
+                    if (!(isClear && hasSupport && isOnStructure && doorValid))
+                    {
+                        allValid = false;
+                        // Don't break, we still need to calculate total cost for the UI feedback
+                    }
+                    totalCost += itemPrice;
+                }
+
+                bool canAfford = _currentBudget >= totalCost;
+                ghostBuilder.UpdateGhosts(_dragPositions, ghostBuilder.CurrentRotation, allValid && canAfford);
+
+                // Placement execution on mouse up
+                if (Input.GetMouseButtonUp(0) && _isDragging)
+                {
+                    _isDragging = false;
+                    if (allValid && canAfford && _dragPositions.Count > 0)
+                    {
+                        foreach (var pos in _dragPositions)
+                        {
+                            PlaceStructure(pos, ghostBuilder.CurrentRotation, _currentHitCollider);
+                        }
+                    }
+                    _dragPositions.Clear();
+                }
+            }
+        }
+
+        /// <summary>
+        /// คำนวณตำแหน่งวางทั้งหมดจากการลาก
+        /// - Normal: เติมเต็ม 2D พื้นที่สี่เหลี่ยม (X, Z)
+        /// - Wall/Door: สร้างเป็นเส้นตรง 1D ตามแกนที่ลากยาวที่สุด
+        /// ใช้ size ของ StructureData เป็น step เพื่อไม่ให้ชิ้นซ้อนกัน
+        /// รองรับ rotation (สลับแกน size เมื่อหมุน 90/270)
+        /// </summary>
+        private List<Vector3> CalculateDragPositions(Vector3 start, Vector3 end)
+        {
+            List<Vector3> positions = new List<Vector3>();
+
+            // ── คำนวณ step จาก size ของ structure ──
+            float sizeX = Mathf.Max(1f, _selectedData.size.x);
+            float sizeZ = Mathf.Max(1f, _selectedData.size.z);
+            float rot = ghostBuilder != null ? ghostBuilder.CurrentRotation : 0f;
+
+            // สลับแกนเมื่อหมุน 90 หรือ 270 องศา
+            if (Mathf.Abs(rot % 180f) > 45f)
+            {
+                float tmp = sizeX;
+                sizeX = sizeZ;
+                sizeZ = tmp;
             }
 
-            if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
+            float stepX = sizeX * gridSize;
+            float stepZ = sizeZ * gridSize;
+
+            float dx = end.x - start.x;
+            float dz = end.z - start.z;
+
+            if (_selectedData.structureType == StructureType.Normal)
             {
-                Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
-                PlaceStructure(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
+                // ── เติมเต็มพื้นที่สี่เหลี่ยม (2D fill) ──
+                int stepsX = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dx) / stepX + 0.5f));
+                int stepsZ = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dz) / stepZ + 0.5f));
+
+                float signX = dx >= 0 ? 1f : -1f;
+                float signZ = dz >= 0 ? 1f : -1f;
+
+                for (int ix = 0; ix <= stepsX; ix++)
+                {
+                    for (int iz = 0; iz <= stepsZ; iz++)
+                    {
+                        Vector3 pos = new Vector3(
+                            start.x + (ix * stepX * signX),
+                            start.y,
+                            start.z + (iz * stepZ * signZ)
+                        );
+                        positions.Add(pos);
+                    }
+                }
             }
+            else
+            {
+                // ── สร้างเป็นเส้นตรง (1D line) สำหรับกำแพง/ประตู ──
+                if (Mathf.Abs(dx) > Mathf.Abs(dz))
+                {
+                    // ลากตามแกน X
+                    int steps = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dx) / stepX + 0.5f));
+                    float signX = dx >= 0 ? 1f : -1f;
+                    for (int i = 0; i <= steps; i++)
+                    {
+                        positions.Add(new Vector3(start.x + (i * stepX * signX), start.y, start.z));
+                    }
+                }
+                else
+                {
+                    // ลากตามแกน Z
+                    int steps = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dz) / stepZ + 0.5f));
+                    float signZ = dz >= 0 ? 1f : -1f;
+                    for (int i = 0; i <= steps; i++)
+                    {
+                        positions.Add(new Vector3(start.x, start.y, start.z + (i * stepZ * signZ)));
+                    }
+                }
+            }
+
+            return positions;
         }
 
         // --------------------------------------------------------------------------------
@@ -588,8 +719,6 @@ namespace Simulation.Building
         public void SelectMaterial(MaterialData material)
         {
             _selectedMaterial = material;
-            // Material selection persists across mode changes
-            // Ghost appearance update could be added here if desired
         }
 
         public void ExitMode()

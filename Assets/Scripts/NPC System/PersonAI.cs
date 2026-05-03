@@ -15,6 +15,8 @@ namespace Simulation.Character
         [Header("Movement")]
         [Tooltip("ความเร็วในการเดิน (ควบคุมโดย NavMeshAgent ด้วย)")]
         public float moveSpeed = 2f;
+        [Tooltip("ระยะที่ถือว่าถึงเป้าหมายแล้ว")]
+        public float arrivalDistance = 0.1f;
 
         [Header("Health & Death")]
         public float maxHealth = 100f;
@@ -27,6 +29,8 @@ namespace Simulation.Character
         private Rigidbody _rb;
         private NavMeshAgent _agent;
         private bool _isDead = false;
+
+        public bool IsDead => _isDead;
 
         private void Awake()
         {
@@ -60,6 +64,7 @@ namespace Simulation.Character
                 {
                     _agent.enabled = true;
                     _agent.speed = moveSpeed;
+                    _agent.stoppingDistance = arrivalDistance;
                     _agent.updateRotation = true;
                 }
                 else
@@ -88,7 +93,7 @@ namespace Simulation.Character
                 _agent.SetDestination(_target.position);
                 
                 // เช็คว่าถึงเป้าหมายหรือยัง
-                if (!_agent.pathPending && _agent.remainingDistance <= 0.2f)
+                if (!_agent.pathPending && _agent.remainingDistance <= arrivalDistance)
                 {
                     // ถึงแล้ว ซ่อนเป้าหมายทิ้ง
                     if (_target.gameObject.activeSelf)

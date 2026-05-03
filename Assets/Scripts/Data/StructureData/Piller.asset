@@ -12,11 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
   m_Name: Piller
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
-  structureName: 
+  structureName: Piller
+  structureType: 0
   basePrice: 80
   baseMass: 50
   baseHP: 100
   size: {x: 1, y: 1, z: 1}
+  pivotAtCenter: 0
   allowOverlap: 1
   placementSinkThrough: 0
   requiresSupport: 1
@@ -26,3 +28,4 @@ MonoBehaviour:
   prefab: {fileID: 1485735910728036044, guid: 4307e4e1576720c4aac09cda4d41f683, type: 3}
   defaultMaterial: {fileID: 11400000, guid: 829f48f1ccaf61443afdeda45981932d, type: 2}
   breakVFX: {fileID: 0}
+  doorReplacementPrefab: {fileID: 0}
