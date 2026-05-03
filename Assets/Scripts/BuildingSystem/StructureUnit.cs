@@ -53,6 +53,13 @@ namespace Simulation.Building
             {
                 bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
                 rb.isKinematic = !isSimulating;
+
+                // Concave Mesh Colliders are not supported with dynamic Rigidbodies.
+                // We must ensure all MeshColliders are convex if we intend to simulate physics.
+                foreach (var meshCol in GetComponentsInChildren<MeshCollider>())
+                {
+                    meshCol.convex = true;
+                }
             }
         }
 

@@ -135,6 +135,12 @@ namespace Simulation.Physics
                 Rigidbody rb = snap.unit.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
+                    // Ensure all mesh colliders are convex before making dynamic
+                    foreach (var meshCol in snap.unit.GetComponentsInChildren<MeshCollider>())
+                    {
+                        meshCol.convex = true;
+                    }
+
                     rb.isKinematic = false;
                     rb.WakeUp();
                 }

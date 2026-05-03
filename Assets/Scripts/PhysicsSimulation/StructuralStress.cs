@@ -353,6 +353,12 @@ namespace Simulation.Physics
             // 4. Ensure the Rigidbody is non-kinematic so it falls freely
             if (_rb != null)
             {
+                // Ensure all mesh colliders are convex before making dynamic
+                foreach (var meshCol in GetComponentsInChildren<MeshCollider>())
+                {
+                    meshCol.convex = true;
+                }
+
                 _rb.isKinematic = false;
                 _rb.useGravity = true;
 

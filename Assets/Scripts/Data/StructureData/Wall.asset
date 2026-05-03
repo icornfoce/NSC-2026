@@ -19,6 +19,8 @@ MonoBehaviour:
   size: {x: 1, y: 1, z: 1}
   allowOverlap: 0
   placementSinkThrough: 0
+  requiresSupport: 0
+  placeOnStructureOnly: 0
   baseMaxCompression: 1000
   baseMaxTension: 1000
   prefab: {fileID: 2622945852013538623, guid: 70003fbe292dfc347b44141495e35488, type: 3}

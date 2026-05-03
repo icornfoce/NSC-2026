@@ -16,9 +16,11 @@ MonoBehaviour:
   basePrice: 100
   baseMass: 100
   baseHP: 100
-  size: {x: 2, y: 1, z: 2}
+  size: {x: 1, y: 1, z: 1}
   allowOverlap: 0
   placementSinkThrough: 0
+  requiresSupport: 0
+  placeOnStructureOnly: 0
   baseMaxCompression: 1000
   baseMaxTension: 1000
   prefab: {fileID: 4189080343208526920, guid: a8f7eb34f959c4d4d989f0f46c92006e, type: 3}

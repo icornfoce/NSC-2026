@@ -411,7 +411,13 @@ namespace Simulation.Building
         private void HandlePlacementMode()
         {
             if (Input.GetMouseButtonDown(1)) { ExitMode(); return; }
-            if (Input.GetKeyDown(KeyCode.R)) ghostBuilder.Rotate();
+            // Walls and Doors auto-rotate based on grid edge, so skip manual rotation
+            if (Input.GetKeyDown(KeyCode.R) && _selectedData != null
+                && _selectedData.structureType != StructureType.Wall
+                && _selectedData.structureType != StructureType.Door)
+            {
+                ghostBuilder.Rotate();
+            }
 
             // Skip the frame where we just entered placing mode (prevents UI click from placing)
             if (_justEnteredPlacing)
@@ -431,7 +437,15 @@ namespace Simulation.Building
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _selectedData);
                 bool hasSupport = HasStructuralSupport(placePos, _selectedData);
                 bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
-                ghostBuilder.SetValid(canAfford && isClear && hasSupport && isOnStructure);
+
+                // Door-specific: must be placed on an existing wall
+                bool doorValid = true;
+                if (_selectedData.structureType == StructureType.Door)
+                {
+                    doorValid = FindWallAtPosition(placePos, ghostBuilder.CurrentRotation) != null;
+                }
+
+                ghostBuilder.SetValid(canAfford && isClear && hasSupport && isOnStructure && doorValid);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget && ghostBuilder.IsValid)
@@ -472,7 +486,7 @@ namespace Simulation.Building
             _movingUnit.gameObject.SetActive(false);
 
             // Initialize offset for the pickup
-            _pivotToBottomOffset = GetPivotToBottomOffset(_movingUnit.Data.prefab);
+            _pivotToBottomOffset = GetPivotToBottomOffset(_movingUnit.Data);
             ghostBuilder.CreateGhost(_movingUnit.Data.prefab);
             ghostBuilder.SetRotation(_movingUnit.Rotation); // Match original rotation
         }
@@ -548,7 +562,7 @@ namespace Simulation.Building
 
             if (data != null && data.prefab != null)
             {
-                _pivotToBottomOffset = GetPivotToBottomOffset(data.prefab);
+                _pivotToBottomOffset = GetPivotToBottomOffset(data);
                 ghostBuilder.CreateGhost(data.prefab);
             }
         }
@@ -649,6 +663,18 @@ namespace Simulation.Building
             float materialPrice = mat != null ? mat.priceModifier : 0f;
             float totalCost = _selectedData.basePrice + materialPrice;
 
+            // ── Door: find and replace the wall underneath ──
+            StructureUnit replacedWall = null;
+            if (_selectedData.structureType == StructureType.Door)
+            {
+                replacedWall = FindWallAtPosition(position, rotation);
+                if (replacedWall == null)
+                {
+                    Debug.LogWarning("[BuildingSystem] Door placement failed: no wall found at target position.");
+                    return;
+                }
+            }
+
             GameObject obj = Instantiate(_selectedData.prefab, position, Quaternion.Euler(0, rotation, 0));
             SetLayerRecursively(obj, structureLayer);
             obj.name = $"{_selectedData.prefab.name} {GetGridPositionString(position)}";
@@ -659,9 +685,23 @@ namespace Simulation.Building
             // Start disabled so the Command can enable it
             obj.SetActive(false);
 
+            // Capture the replaced wall for undo/redo
+            StructureUnit capturedWall = replacedWall;
+
             ExecuteCommand(
                 execute: () => {
                     _currentBudget -= totalCost;
+
+                    // Hide the wall that the door replaces
+                    if (capturedWall != null)
+                    {
+                        CleanupJointsReferencingUnit(capturedWall);
+                        _placedStructures.Remove(capturedWall);
+                        var wallJoints = capturedWall.GetComponents<Joint>();
+                        foreach (var j in wallJoints) Destroy(j);
+                        capturedWall.gameObject.SetActive(false);
+                    }
+
                     obj.SetActive(true);
                     AttachJoint(obj, targetCollider);
                     _placedStructures.Add(unit);
@@ -687,6 +727,16 @@ namespace Simulation.Building
                     foreach (var j in joints) Destroy(j);
                     
                     obj.SetActive(false);
+
+                    // Restore the wall that was replaced
+                    if (capturedWall != null)
+                    {
+                        capturedWall.gameObject.SetActive(true);
+                        _placedStructures.Add(capturedWall);
+                        AttachJoint(capturedWall.gameObject, targetCollider);
+                        AttachSideJoints(capturedWall.gameObject);
+                        IgnoreOverlappingCollisions(capturedWall);
+                    }
                 }
             );
 
@@ -970,38 +1020,85 @@ namespace Simulation.Building
         // HELPER FUNCTIONS
         // --------------------------------------------------------------------------------
 
+        /// <summary>
+        /// Determine the active StructureData for placement calculations.
+        /// In Placing mode use _selectedData, in Moving mode use _movingUnit.Data.
+        /// </summary>
+        private StructureData GetActiveStructureData()
+        {
+            if (_selectedData != null) return _selectedData;
+            if (_movingUnit != null) return _movingUnit.Data;
+            return null;
+        }
+
         private Vector3 CalculatePlacementPosition(Vector3 hitPoint)
         {
+            StructureData activeData = GetActiveStructureData();
+            StructureType placementType = activeData != null ? activeData.structureType : StructureType.Normal;
+
             float rawX = hitPoint.x;
             float rawZ = hitPoint.z;
 
             // เมื่อคลิกด้านข้างของ Structure ให้เลื่อนตำแหน่งไปตาม normal
             // เพื่อบังคับให้ snap ไปช่องถัดไปแทนช่องเดิม
-            // (แก้ปัญหา Mathf.Round banker's rounding ที่ปัดกลับช่องเดิม)
-            // สำหรับ Cylinder/ทรงกลม: snap normal ไปแกนหลัก (X หรือ Z) เพื่อไม่ให้วางเฉียง
             bool isSideHit = Mathf.Abs(_currentHitNormal.y) < 0.5f;
             if (isSideHit && _currentHitCollider != null
                 && _currentHitCollider.GetComponentInParent<StructureUnit>() != null)
             {
-                // หาแกนหลักของ normal (X หรือ Z) เพื่อ snap ไปทิศที่ชัดเจน
                 float absX = Mathf.Abs(_currentHitNormal.x);
                 float absZ = Mathf.Abs(_currentHitNormal.z);
 
                 if (absX > absZ && absX > 0.3f)
                 {
-                    // แกน X เด่นกว่า → เลื่อนไปตาม X เท่านั้น
                     rawX += Mathf.Sign(_currentHitNormal.x) * gridSize * 0.51f;
                 }
                 else if (absZ > 0.3f)
                 {
-                    // แกน Z เด่นกว่า → เลื่อนไปตาม Z เท่านั้น
                     rawZ += Mathf.Sign(_currentHitNormal.z) * gridSize * 0.51f;
                 }
             }
 
-            float x = useGridSnap ? Mathf.Round(rawX / gridSize) * gridSize : rawX;
-            float z = useGridSnap ? Mathf.Round(rawZ / gridSize) * gridSize : rawZ;
+            // ── X / Z Snapping based on StructureType ──
+            float x, z;
 
+            if (placementType == StructureType.Wall || placementType == StructureType.Door)
+            {
+                // Wall / Door: snap to grid EDGES (lines between cells)
+                // One axis snaps to cell center, the other to the grid line,
+                // depending on which edge is closer.
+                bool snappedToXLine;
+                x = SnapWallAxis(rawX, rawZ, out z, out snappedToXLine);
+
+                // Auto-rotate: wall on X-line faces Z (rotation=0), wall on Z-line faces X (rotation=90)
+                if (ghostBuilder != null)
+                {
+                    float autoRot = snappedToXLine ? 0f : 90f;
+                    ghostBuilder.SetRotation(autoRot);
+                }
+            }
+            else
+            {
+                // Normal structures: snap to cell CENTER, accounting for multi-cell size
+                float sizeX = activeData != null ? activeData.size.x : 1f;
+                float sizeZ = activeData != null ? activeData.size.z : 1f;
+                float rot = ghostBuilder != null ? ghostBuilder.CurrentRotation : 0f;
+
+                // Swap size axes when rotated 90/270
+                if (Mathf.Abs(rot % 180f) > 45f)
+                {
+                    float tmp = sizeX;
+                    sizeX = sizeZ;
+                    sizeZ = tmp;
+                }
+
+                float centerX = SnapToCellCenter(rawX, sizeX);
+                float centerZ = SnapToCellCenter(rawZ, sizeZ);
+
+                x = centerX;
+                z = centerZ;
+            }
+
+            // ── Y Calculation (unchanged logic) ──
             float y = hitPoint.y;
 
             if (_currentHitCollider != null)
@@ -1009,36 +1106,27 @@ namespace Simulation.Building
                 StructureUnit hitUnit = _currentHitCollider.GetComponentInParent<StructureUnit>();
                 if (hitUnit != null && hitUnit.Data != null && hitUnit.Data.prefab != null)
                 {
-                    // Use real prefab bounds for consistent Y calculation
-                    float hitUnitPivotToBottom = GetPivotToBottomOffset(hitUnit.Data.prefab);
+                    float hitUnitPivotToBottom = GetPivotToBottomOffset(hitUnit.Data);
                     float hitUnitPivotToTop    = GetPivotToTopOffset(hitUnit.Data.prefab);
 
-                    // bottomY = world Y of the bottom face of hitUnit
                     float bottomY = hitUnit.transform.position.y - hitUnitPivotToBottom;
-                    // topY    = world Y of the top face of hitUnit
                     float topY    = hitUnit.transform.position.y + hitUnitPivotToTop;
 
                     if (isSideHit)
                     {
-                        // Side placement: place at the same base level as the hit structure
-                        // so structures can be built outward horizontally
                         y = bottomY;
                     }
-                    else if (hitUnit.Data.placementSinkThrough && (_selectedData == null || !_selectedData.requiresSupport))
+                    else if (hitUnit.Data.placementSinkThrough && (activeData == null || !activeData.requiresSupport))
                     {
-                        // Sink-through: start from the BOTTOM of the floor/slab
-                        // so placed wall shares the same ground level as walls on bare ground
                         y = bottomY;
                     }
                     else
                     {
-                        // Normal stacking: place on TOP of the hit structure (e.g. Pillar on Floor)
                         y = topY;
                     }
                 }
             }
 
-            // Snap the desired BASE/BOTTOM position to the heightStep grid so all structures share the same discrete height levels
             if (snapYToGrid)
             {
                 float yStep = heightStep > 0f ? heightStep : gridSize;
@@ -1048,10 +1136,104 @@ namespace Simulation.Building
                 }
             }
 
-            // Finally, add pivot-to-bottom offset of the piece being placed so its bottom lands exactly at y
             y += _pivotToBottomOffset;
 
             return new Vector3(x, y, z);
+        }
+
+        // ── Snap helpers ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Snap a coordinate to the center of a cell group.
+        /// For size=1: center of a single cell (offset by half grid).
+        /// For size=2: center spans two cells, etc.
+        /// </summary>
+        private float SnapToCellCenter(float raw, float cellCount)
+        {
+            if (!useGridSnap) return raw;
+
+            // The total span of this structure in world units
+            float span = cellCount * gridSize;
+
+            // Snap the LEFT edge to the nearest grid line, then offset to center
+            float leftEdge = raw - span * 0.5f;
+            float snappedLeft = Mathf.Round(leftEdge / gridSize) * gridSize;
+            return snappedLeft + span * 0.5f;
+        }
+
+        /// <summary>
+        /// Wall snapping: choose the nearest grid edge (line between cells).
+        /// The wall is perpendicular to the edge it sits on.
+        /// One axis goes to the grid line, the other goes to the cell center.
+        /// snappedToXLine: true if the wall sits on a vertical (X-axis) grid line.
+        /// </summary>
+        private float SnapWallAxis(float rawX, float rawZ, out float snappedZ, out bool snappedToXLine)
+        {
+            if (!useGridSnap)
+            {
+                snappedZ = rawZ;
+                snappedToXLine = true;
+                return rawX;
+            }
+
+            // Snap both axes to nearest grid line first
+            float lineX = Mathf.Round(rawX / gridSize) * gridSize;
+            float lineZ = Mathf.Round(rawZ / gridSize) * gridSize;
+
+            // Distance from each axis to its nearest grid line
+            float distToLineX = Mathf.Abs(rawX - lineX);
+            float distToLineZ = Mathf.Abs(rawZ - lineZ);
+
+            // Cell center = grid line offset by half
+            float centerX = Mathf.Floor(rawX / gridSize) * gridSize + gridSize * 0.5f;
+            float centerZ = Mathf.Floor(rawZ / gridSize) * gridSize + gridSize * 0.5f;
+
+            if (distToLineX < distToLineZ)
+            {
+                // Closer to a vertical grid line → wall sits on X line, extends along Z
+                snappedZ = centerZ;
+                snappedToXLine = true;
+                return lineX;
+            }
+            else
+            {
+                // Closer to a horizontal grid line → wall sits on Z line, extends along X
+                snappedZ = lineZ;
+                snappedToXLine = false;
+                return centerX;
+            }
+        }
+
+        /// <summary>
+        /// Find an existing Wall-type StructureUnit at the given position and rotation.
+        /// Used by Door placement to find which wall to replace.
+        /// </summary>
+        private StructureUnit FindWallAtPosition(Vector3 position, float rotation)
+        {
+            float tolerance = gridSize * 0.3f;
+            float rotTolerance = 10f;
+
+            foreach (var unit in _placedStructures)
+            {
+                if (unit == null || unit == _movingUnit) continue;
+                if (unit.Data == null || unit.Data.structureType != StructureType.Wall) continue;
+
+                float dist = Vector3.Distance(position, unit.transform.position);
+                float rotDiff = Quaternion.Angle(
+                    Quaternion.Euler(0, rotation, 0),
+                    Quaternion.Euler(0, unit.Rotation, 0)
+                );
+
+                // Also accept 180° difference (same wall facing opposite direction)
+                bool sameOrientation = rotDiff < rotTolerance || Mathf.Abs(rotDiff - 180f) < rotTolerance;
+
+                if (dist < tolerance && sameOrientation)
+                {
+                    return unit;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -1088,13 +1270,24 @@ namespace Simulation.Building
             }
         }
 
+        private float GetPivotToBottomOffset(StructureData data)
+        {
+            if (data == null || data.prefab == null) return 0f;
+
+            if (data.pivotAtCenter)
+            {
+                // If explicitly centered, the offset is half the height
+                // heightStep is the height of one grid unit vertically
+                float yStep = heightStep > 0f ? heightStep : gridSize;
+                return (data.size.y * yStep) * 0.5f;
+            }
+
+            return GetPivotToBottomOffset(data.prefab);
+        }
+
         private float GetPivotToBottomOffset(GameObject prefab)
         {
             (Vector3 center, Vector3 size) = GetPrefabBounds(prefab);
-            // Pivot to Bottom offset = - (center.y - size.y * 0.5) = size.y * 0.5 - center.y
-            // Wait, previous logic was -prefabBounds.min.y.
-            // min.y is center.y - size.y * 0.5f.
-            // So -min.y = -(center.y - size.y * 0.5f) = size.y * 0.5f - center.y.
             return (size.y * 0.5f) - center.y;
         }
 
@@ -1196,8 +1389,15 @@ namespace Simulation.Building
                 
                 if (dist < 0.1f && rotDiff < 1f)
                 {
-                    // Perfectly overlapping identical positions are never allowed
-                    return false; 
+                    // Door is allowed to overlap with a Wall (it replaces it)
+                    bool isDoorOnWall = structureData.structureType == StructureType.Door
+                                     && unit.Data != null
+                                     && unit.Data.structureType == StructureType.Wall;
+                    if (!isDoorOnWall)
+                    {
+                        // Perfectly overlapping identical positions are never allowed
+                        return false;
+                    }
                 }
 
                 // If they are DIFFERENT structural types, we allow them to overlap!
@@ -1285,7 +1485,7 @@ namespace Simulation.Building
 
             // 4. ตรวจสอบ Y (ห้ามจมดิน)
             // position.y คือตำแหน่ง Pivot, เราต้องหาตำแหน่งฐาน (Bottom)
-            float pivotToBottom = GetPivotToBottomOffset(data.prefab);
+            float pivotToBottom = GetPivotToBottomOffset(data);
             float bottomY = position.y - pivotToBottom;
 
             if (bottomY < -0.01f) return false;
@@ -1308,7 +1508,7 @@ namespace Simulation.Building
             // ถ้าโครงสร้างนี้ไม่ต้องการฐานรองรับ → วางได้เลย
             if (!data.requiresSupport) return true;
 
-            float pivotToBottom = GetPivotToBottomOffset(data.prefab);
+            float pivotToBottom = GetPivotToBottomOffset(data);
             Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
 
             LayerMask combinedMask = groundLayer | structureLayer;
