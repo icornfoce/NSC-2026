@@ -468,7 +468,7 @@ namespace Simulation.Building
                 foreach (var pos in _dragPositions)
                 {
                     bool isClear = IsAreaClear(pos, ghostBuilder.CurrentRotation, _selectedData);
-                    bool hasSupport = HasStructuralSupport(pos, _selectedData);
+                    bool hasSupport = HasStructuralSupport(pos, ghostBuilder.CurrentRotation, _selectedData);
                     bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
                     
                     bool doorValid = true;
@@ -534,7 +534,9 @@ namespace Simulation.Building
             float dx = end.x - start.x;
             float dz = end.z - start.z;
 
-            if (_selectedData.structureType == StructureType.Normal || _selectedData.structureType == StructureType.Floor)
+            if (_selectedData.structureType == StructureType.Normal || 
+                _selectedData.structureType == StructureType.Floor ||
+                _selectedData.structureType == StructureType.Wall)
             {
                 // ── เติมเต็มพื้นที่สี่เหลี่ยม (2D fill) สำหรับพื้นและโครงสร้างทั่วไป ──
                 int stepsX = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dx) / stepX + 0.5f));
@@ -638,7 +640,7 @@ namespace Simulation.Building
                 ghostBuilder.UpdatePosition(placePos);
                 
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
-                bool hasSupport = HasStructuralSupport(placePos, _movingUnit.Data);
+                bool hasSupport = HasStructuralSupport(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
                 bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
                 ghostBuilder.SetValid(isClear && hasSupport && isOnStructure);
             }
@@ -1253,6 +1255,37 @@ namespace Simulation.Building
                 bool snappedToXLine;
                 x = SnapWallAxis(rawX, rawZ, out z, out snappedToXLine);
 
+                // สำหรับ Door: ให้ลองหา Wall ที่ใกล้ที่สุดเพื่อ Snap เข้าหาโดยตรง (ช่วยให้วางง่ายขึ้น)
+                if (placementType == StructureType.Door)
+                {
+                    StructureUnit nearbyWall = null;
+                    float minWallDist = 1.0f; // ระยะดึงดูดเข้าหา Wall
+                    
+                    foreach (var unit in _placedStructures)
+                    {
+                        if (unit == null || unit.Data == null || unit.Data.structureType != StructureType.Wall) continue;
+                        float d = Vector3.Distance(new Vector3(x, hitPoint.y, z), unit.transform.position);
+                        if (d < minWallDist)
+                        {
+                            minWallDist = d;
+                            nearbyWall = unit;
+                        }
+                    }
+
+                    if (nearbyWall != null)
+                    {
+                        x = nearbyWall.transform.position.x;
+                        z = nearbyWall.transform.position.z;
+                        float snappedY = nearbyWall.transform.position.y; // Lock แกน Y ตาม Wall
+
+                        if (ghostBuilder != null && !_isDragging)
+                        {
+                            ghostBuilder.SetRotation(nearbyWall.Rotation);
+                        }
+                        return new Vector3(x, snappedY, z); // Snap จบตรงนี้เลย (ใช้ Y ของ Wall โดยตรง)
+                    }
+                }
+
                 // Auto-rotate: wall on X-line faces Z (rotation=0), wall on Z-line faces X (rotation=90)
                 // ล็อคการหมุนเมื่อกำลังลากสร้าง (ไม่ให้กำแพงเปลี่ยนด้านไปมา)
                 if (ghostBuilder != null && !_isDragging)
@@ -1585,13 +1618,7 @@ namespace Simulation.Building
                     }
                 }
 
-                // If they are DIFFERENT structural types, we allow them to overlap!
-                if (structureData != unit.Data)
-                {
-                    continue;
-                }
-
-                // If both allow overlap and are the same type, skip
+                // If both allow overlap, skip intersection check
                 if (structureData.allowOverlap || (unit.Data != null && unit.Data.allowOverlap)) 
                 {
                     continue;
@@ -1682,28 +1709,27 @@ namespace Simulation.Building
         // --------------------------------------------------------------------------------
 
         /// <summary>
-        /// ตรวจสอบว่าตำแหน่งที่จะวางมี "ฐานรองรับ" หรือไม่
-        /// ใช้เฉพาะ Structure ที่ตั้ง requiresSupport = true (เช่น เสา/Pillar)
-        /// Structure อื่น (Floor, Wall, etc.) ไม่ต้องเช็ค วางได้เลย
+        /// ตรวจสอบว่าตำแหน่งที่จะวางมี "ฐานรองรับ" หรือไม่ (พื้น หรือ สิ่งก่อสร้างข้างเคียง)
+        /// ป้องกันการวางลอยกลางอากาศโดยไม่มีจุดยึด
         /// </summary>
-        private bool HasStructuralSupport(Vector3 position, StructureData data)
+        private bool HasStructuralSupport(Vector3 position, float rotation, StructureData data)
         {
             if (data == null || data.prefab == null) return true;
 
-            // ถ้าโครงสร้างนี้ไม่ต้องการฐานรองรับ → วางได้เลย
-            if (!data.requiresSupport) return true;
-
+            // 1. ตรวจสอบพื้นดินโดยตรงด้านล่าง
             float pivotToBottom = GetPivotToBottomOffset(data);
             Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
+            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.1f, Vector3.down);
+            if (UnityEngine.Physics.Raycast(downRay, 0.4f, groundLayer)) return true;
 
-            LayerMask combinedMask = groundLayer | structureLayer;
+            // 2. ตรวจสอบการสัมผัสกับสิ่งก่อสร้างอื่น หรือพื้นผิวข้างเคียง (Adjacency)
+            // ใช้ Bounds ที่ขยายขนาดขึ้นเล็กน้อยเพื่อเช็คว่าชนกับอะไรไหม
+            Bounds b = GetGridBounds(position, rotation, data);
+            // ขยาย Bounds ออกไป 0.1m ทุกทิศทาง
+            Vector3 checkSize = b.size + new Vector3(0.2f, 0.2f, 0.2f);
             
-            // เพิ่มความสูงจุดเริ่มต้นขึ้นไปอีก (0.2f) เพื่อรับประกันว่า Ray จะเริ่มเหนือพื้นแน่นอน
-            // แม้ว่าฐานของเสาจะพอดีกับผิวด้านบนของพื้นก็ตาม
-            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.2f, Vector3.down);
-
-            // ตรวจระยะให้ครอบคลุมลงมาถึงพื้น
-            return UnityEngine.Physics.Raycast(downRay, 0.4f, combinedMask);
+            // ถ้ามีอะไรอยู่ในขอบเขตที่ขยายออกมา (และไม่ใช่ตัวเอง) แสดงว่ามีการเชื่อมต่อ
+            return UnityEngine.Physics.CheckBox(b.center, checkSize * 0.5f, Quaternion.Euler(0, rotation, 0), groundLayer | structureLayer);
         }
 
         // --------------------------------------------------------------------------------
