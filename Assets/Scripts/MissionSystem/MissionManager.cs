@@ -151,7 +151,7 @@ namespace Simulation.Mission
         /// </summary>
         public (int floors, int area, int people) GetCurrentStats()
         {
-            return (CountFloors(), CountAreaPerFloor(), CountPlacedPeople());
+            return (CountFloors(), CountTotalArea(), CountPlacedPeople());
         }
 
         /// <summary>
@@ -199,11 +199,11 @@ namespace Simulation.Mission
                 return $"Not enough floors! Need {currentMission.requiredFloors} (Current: {floors})";
             }
 
-            // 2. Check Area Per Floor
-            int areaPerFloor = CountAreaPerFloor();
-            if (areaPerFloor < currentMission.requiredAreaPerFloor)
+            // 2. Check Total Area
+            int totalArea = CountTotalArea();
+            if (totalArea < currentMission.requiredAreaPerFloor)
             {
-                return $"Not enough area per floor! Need {currentMission.requiredAreaPerFloor} m² (Current: {areaPerFloor} m²)";
+                return $"Not enough total area! Need {currentMission.requiredAreaPerFloor} m² (Current: {totalArea} m²)";
             }
 
             // 3. Check Population
@@ -246,10 +246,10 @@ namespace Simulation.Mission
         }
 
         /// <summary>
-        /// นับพื้นที่ต่อชั้น (ช่อง Grid ที่มี Structure วางอยู่ในชั้นที่มีมากที่สุด)
-        /// 1 ช่อง = 1 ตารางเมตร
+        /// นับพื้นที่รวมของตึกทั้งหมด (ทุกชั้น)
+        /// คืนค่าเป็น ตารางเมตร (m²) โดยคิดจาก (จำนวนช่อง Grid * gridSize^2)
         /// </summary>
-        private int CountAreaPerFloor()
+        private int CountTotalArea()
         {
             StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
             if (units.Length == 0) return 0;
@@ -277,26 +277,38 @@ namespace Simulation.Mission
                 int sizeX = Mathf.Max(1, Mathf.RoundToInt(unit.Data.size.x));
                 int sizeZ = Mathf.Max(1, Mathf.RoundToInt(unit.Data.size.z));
 
-                int gridX = Mathf.RoundToInt(unit.transform.position.x / gridSize);
-                int gridZ = Mathf.RoundToInt(unit.transform.position.z / gridSize);
+                // คำนวณตำแหน่ง Grid เริ่มต้น (มุมซ้ายล่างของโครงสร้าง)
+                // เนื่องจากตำแหน่งของ Structure คือจุดศูนย์กลาง (SnapToCellCenter)
+                // เราต้องถอยกลับไปที่ขอบซ้ายล่างเพื่อเริ่มนับช่อง Grid
+                float worldX = unit.transform.position.x;
+                float worldZ = unit.transform.position.z;
+
+                float spanX = sizeX * gridSize;
+                float spanZ = sizeZ * gridSize;
+
+                // หาขอบซ้ายล่างในหน่วยโลก แล้วแปลงเป็น Grid Index
+                int startGridX = Mathf.RoundToInt((worldX - spanX * 0.5f) / gridSize);
+                int startGridZ = Mathf.RoundToInt((worldZ - spanZ * 0.5f) / gridSize);
 
                 for (int dx = 0; dx < sizeX; dx++)
                 {
                     for (int dz = 0; dz < sizeZ; dz++)
                     {
-                        floorAreas[floor].Add(new Vector2Int(gridX + dx, gridZ + dz));
+                        floorAreas[floor].Add(new Vector2Int(startGridX + dx, startGridZ + dz));
                     }
                 }
             }
 
-            // คืนค่าชั้นที่มีพื้นที่มากที่สุด
-            int maxArea = 0;
+            // รวมพื้นที่จากทุกชั้น
+            int totalCells = 0;
             foreach (var kvp in floorAreas)
             {
-                if (kvp.Value.Count > maxArea) maxArea = kvp.Value.Count;
+                totalCells += kvp.Value.Count;
             }
 
-            return maxArea;
+            // คำนวณเป็นตารางเมตร: x m² = จำนวนช่อง * (gridSize * gridSize)
+            float areaPerCell = gridSize * gridSize;
+            return Mathf.RoundToInt(totalCells * areaPerCell);
         }
 
         /// <summary>
@@ -428,21 +440,20 @@ namespace Simulation.Mission
         {
             int stars = 0;
 
-            // ★ Star 1: All survived
+            // ★ Star 1: All survived (Prerequisite)
             int alivePeople = CountAlivePeople();
             bool allSurvived = alivePeople >= _initialPeopleCount && _initialPeopleCount > 0;
 
-            if (allSurvived)
+            if (!allSurvived)
             {
-                stars++;
-                Debug.Log("  ★ Star 1: Everyone survived! ✓");
+                Debug.Log($"  ☆ Star 1: FAILED (Survivors {alivePeople}/{_initialPeopleCount}) - No stars awarded.");
+                return 0; // ต้องรอดทุกคนถึงจะได้ดาวแรก
             }
-            else
-            {
-                Debug.Log($"  ☆ Star 1: Survivors {alivePeople}/{_initialPeopleCount} ✗");
-            }
+            
+            stars++;
+            Debug.Log("  ★ Star 1: Everyone survived! ✓");
 
-            // ★ Star 2: No damage
+            // ★ Star 2: No damage (Prerequisite for Star 3)
             int intactStructures = CountIntactStructures();
             bool noBroken = intactStructures >= _initialStructureCount && _initialStructureCount > 0;
 
@@ -450,24 +461,24 @@ namespace Simulation.Mission
             {
                 stars++;
                 Debug.Log("  ★ Star 2: No structural damage! ✓");
+
+                // ★ Star 3: Profit (Only if building is intact)
+                float currentBudget = BuildingSystem.Instance != null ? BuildingSystem.Instance.CurrentBudget : 0f;
+                bool isProfit = currentBudget > 0f;
+
+                if (isProfit)
+                {
+                    stars++;
+                    Debug.Log($"  ★ Star 3: Positive budget ({currentBudget:F0}) ✓");
+                }
+                else
+                {
+                    Debug.Log($"  ☆ Star 3: Negative budget ({currentBudget:F0}) ✗");
+                }
             }
             else
             {
-                Debug.Log($"  ☆ Star 2: Intact structures {intactStructures}/{_initialStructureCount} ✗");
-            }
-
-            // ★ Star 3: Profit
-            float currentBudget = BuildingSystem.Instance != null ? BuildingSystem.Instance.CurrentBudget : 0f;
-            bool isProfit = currentBudget > 0f;
-
-            if (isProfit)
-            {
-                stars++;
-                Debug.Log($"  ★ Star 3: Positive budget ({currentBudget:F0}) ✓");
-            }
-            else
-            {
-                Debug.Log($"  ☆ Star 3: Negative budget ({currentBudget:F0}) ✗");
+                Debug.Log($"  ☆ Star 2: Structural damage detected ({intactStructures}/{_initialStructureCount}) ✗ - Star 3 locked.");
             }
 
             return stars;
@@ -491,7 +502,7 @@ namespace Simulation.Mission
         [ContextMenu("Debug: Count Stats")]
         private void DebugCountStats()
         {
-            Debug.Log($"Floors: {CountFloors()}, Area/Floor: {CountAreaPerFloor()}, People: {CountPlacedPeople()}, Alive: {CountAlivePeople()}, Structures: {CountIntactStructures()}");
+            Debug.Log($"Floors: {CountFloors()}, Total Area: {CountTotalArea()} m², People: {CountPlacedPeople()}, Alive: {CountAlivePeople()}, Structures: {CountIntactStructures()}");
         }
 #endif
     }
