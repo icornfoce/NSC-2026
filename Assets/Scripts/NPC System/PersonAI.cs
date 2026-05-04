@@ -31,6 +31,7 @@ namespace Simulation.Character
         private bool _isDead = false;
 
         public bool IsDead => _isDead;
+        public bool HasReachedTarget { get; private set; } = false;
 
         private void Awake()
         {
@@ -100,6 +101,7 @@ namespace Simulation.Character
                 // เช็คว่าถึงเป้าหมายหรือยัง
                 if (!_agent.pathPending && _agent.remainingDistance <= arrivalDistance)
                 {
+                    HasReachedTarget = true;
                     // ถึงแล้ว ซ่อนเป้าหมายทิ้ง
                     if (_target.gameObject.activeSelf)
                     {

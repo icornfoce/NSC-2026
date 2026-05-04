@@ -84,7 +84,7 @@ namespace Simulation.Mission
             // เช็คว่าหมดเวลาแล้วหรือยัง
             if (currentMission != null && simulationTimer >= currentMission.simulationDuration)
             {
-                EndMission();
+                EndMission(true);
             }
         }
 
@@ -165,7 +165,7 @@ namespace Simulation.Mission
         /// <summary>
         /// จบ Mission — หยุด Simulation, ประเมินผล, แสดงดาว
         /// </summary>
-        public void EndMission()
+        public void EndMission(bool isTimeUp = true)
         {
             if (!isMissionActive) return;
             isMissionActive = false;
@@ -173,13 +173,20 @@ namespace Simulation.Mission
             // หยุดภัยพิบัติทั้งหมด
             StopAllDisasters();
 
-            // ประเมินผล
-            lastStarRating = EvaluateResult();
+            if (isTimeUp)
+            {
+                // ประเมินผล
+                lastStarRating = EvaluateResult();
 
-            // แสดงผล
-            Debug.Log($"<color=yellow>★ Mission Complete: {currentMission.missionName} — {lastStarRating} Star(s)!</color>");
+                // แสดงผล
+                Debug.Log($"<color=yellow>★ Mission Complete: {currentMission.missionName} — {lastStarRating} Star(s)!</color>");
 
-            OnMissionCompleted?.Invoke(lastStarRating);
+                OnMissionCompleted?.Invoke(lastStarRating);
+            }
+            else
+            {
+                Debug.Log("<color=red>■ Mission Stopped Early</color>");
+            }
 
             // หยุด Simulation
             if (SimulationManager.Instance != null && SimulationManager.Instance.IsSimulating)
@@ -243,8 +250,8 @@ namespace Simulation.Mission
             foreach (var unit in units)
             {
                 if (unit == null || !unit.gameObject.activeSelf) continue;
-                // กรอง: นับเฉพาะชิ้นส่วนประเภท Normal (Floor, Foundation) ไม่นับ Wall/Door
-                if (unit.Data != null && unit.Data.structureType != Simulation.Data.StructureType.Normal) continue;
+                // กรอง: นับชิ้นส่วนประเภท Floor หรือ Normal (เช่น เสา) เป็นตัวระบุชั้น
+                if (unit.Data != null && unit.Data.structureType != Simulation.Data.StructureType.Floor && unit.Data.structureType != Simulation.Data.StructureType.Normal) continue;
 
                 int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep);
                 floorLevels.Add(floor);
@@ -272,8 +279,8 @@ namespace Simulation.Mission
             {
                 if (unit == null || !unit.gameObject.activeSelf) continue;
                 if (unit.Data == null) continue;
-                // นับเฉพาะ Normal structures (Floor ฯลฯ)
-                if (unit.Data.structureType != Simulation.Data.StructureType.Normal) continue;
+                // นับเฉพาะ Floor structures
+                if (unit.Data.structureType != Simulation.Data.StructureType.Floor) continue;
 
                 int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep);
                 if (!floorAreas.ContainsKey(floor))
@@ -448,13 +455,19 @@ namespace Simulation.Mission
         {
             int stars = 0;
 
-            // ★ Star 1: All survived (Prerequisite)
-            int alivePeople = CountAlivePeople();
-            bool allSurvived = alivePeople >= _initialPeopleCount && _initialPeopleCount > 0;
+            // ★ Star 1: All survived and reached target
+            PersonAI[] people = FindObjectsByType<PersonAI>(FindObjectsSortMode.None);
+            int successPeople = 0;
+            foreach (var p in people)
+            {
+                if (p != null && p.gameObject.activeSelf && !p.IsDead && p.HasReachedTarget) successPeople++;
+            }
+            
+            bool allSurvived = successPeople >= _initialPeopleCount && _initialPeopleCount > 0;
 
             if (!allSurvived)
             {
-                Debug.Log($"  ☆ Star 1: FAILED (Survivors {alivePeople}/{_initialPeopleCount}) - No stars awarded.");
+                Debug.Log($"  ☆ Star 1: FAILED (Successful {successPeople}/{_initialPeopleCount}) - No stars awarded.");
                 return 0; // ต้องรอดทุกคนถึงจะได้ดาวแรก
             }
             

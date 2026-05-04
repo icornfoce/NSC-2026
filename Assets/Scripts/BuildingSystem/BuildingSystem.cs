@@ -534,9 +534,9 @@ namespace Simulation.Building
             float dx = end.x - start.x;
             float dz = end.z - start.z;
 
-            if (_selectedData.structureType == StructureType.Normal)
+            if (_selectedData.structureType == StructureType.Normal || _selectedData.structureType == StructureType.Floor)
             {
-                // ── เติมเต็มพื้นที่สี่เหลี่ยม (2D fill) ──
+                // ── เติมเต็มพื้นที่สี่เหลี่ยม (2D fill) สำหรับพื้นและโครงสร้างทั่วไป ──
                 int stepsX = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dx) / stepX + 0.5f));
                 int stepsZ = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dz) / stepZ + 0.5f));
 
@@ -558,8 +558,11 @@ namespace Simulation.Building
             }
             else
             {
-                // ── สร้างเป็นเส้นตรง (1D line) สำหรับกำแพง/ประตู ──
-                if (Mathf.Abs(dx) > Mathf.Abs(dz))
+                // ── สร้างเป็นเส้นตรง (1D line) สำหรับกำแพง/ประตู ให้ล็อคแกนตามการหัน ──
+                float wallRot = ghostBuilder != null ? ghostBuilder.CurrentRotation : 0f;
+                bool alignsWithX = Mathf.Abs(wallRot % 180f) < 45f;
+
+                if (alignsWithX)
                 {
                     // ลากตามแกน X
                     int steps = Mathf.Max(0, Mathf.FloorToInt(Mathf.Abs(dx) / stepX + 0.5f));
@@ -1251,7 +1254,8 @@ namespace Simulation.Building
                 x = SnapWallAxis(rawX, rawZ, out z, out snappedToXLine);
 
                 // Auto-rotate: wall on X-line faces Z (rotation=0), wall on Z-line faces X (rotation=90)
-                if (ghostBuilder != null)
+                // ล็อคการหมุนเมื่อกำลังลากสร้าง (ไม่ให้กำแพงเปลี่ยนด้านไปมา)
+                if (ghostBuilder != null && !_isDragging)
                 {
                     float autoRot = snappedToXLine ? 0f : 90f;
                     ghostBuilder.SetRotation(autoRot);

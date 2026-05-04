@@ -12,7 +12,8 @@ namespace Simulation.Data
     {
         Normal,
         Wall,
-        Door
+        Door,
+        Floor
     }
 
     [CreateAssetMenu(fileName = "New Structure Data", menuName = "Simulation/Structure Data")]

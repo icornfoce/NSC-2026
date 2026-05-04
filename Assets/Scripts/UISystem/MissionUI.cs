@@ -153,7 +153,7 @@ namespace Simulation.UI
             if (MissionManager.Instance.IsMissionActive)
             {
                 // ถ้ากำลังเล่นอยู่ ปุ่มนี้อาจทำหน้าที่ Stop
-                MissionManager.Instance.EndMission();
+                MissionManager.Instance.EndMission(false);
                 if (startButtonText != null) startButtonText.text = "START";
             }
             else

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28ecd239f3c97e34499328db03445422, type: 3}
   m_Name: Door
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
-  structureName: Wall
+  structureName: Door
   structureType: 2
   basePrice: 100
   baseMass: 50

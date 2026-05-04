@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: floor
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Data.StructureData
   structureName: Floor
-  structureType: 0
+  structureType: 3
   basePrice: 100
   baseMass: 100
   baseHP: 100
