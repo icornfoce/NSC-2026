@@ -30,4 +30,4 @@ MonoBehaviour:
   breakVFX: {fileID: 0}
   breakSFX: {fileID: 8300000, guid: ba02fedabdc26cc4db3df4b5fe12e6a5, type: 3}
   breakShakeIntensity: 2
-  doorReplacementPrefab: {fileID: 3987636509745722619, guid: d5e35f9fec8b8724fa7431d5ec7425c7, type: 3}
+  doorReplacementPrefab: {fileID: 0}

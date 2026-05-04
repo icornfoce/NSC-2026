@@ -67,6 +67,14 @@ namespace Simulation.Mission
             else Destroy(this);
         }
 
+        private void Start()
+        {
+            if (currentMission != null)
+            {
+                SetMission(currentMission);
+            }
+        }
+
         private void Update()
         {
             if (!isMissionActive) return;

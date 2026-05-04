@@ -115,6 +115,12 @@ namespace Simulation.Physics
             surface.collectObjects = CollectObjects.All;
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders; // ใช้ Collider เป็นตัวคำนวณพื้นเดิน
 
+            // หมายเหตุ: หาก AI ยังเดินผ่านประตูไม่ได้ หรือขึ้นบันไดไม่ได้ 
+            // ให้ไปที่ Component NavMeshSurface ใน Inspector แล้วปรับค่า:
+            // - Agent Radius: 0.3 (เล็กลงเพื่อให้ลอดช่องแคบได้)
+            // - Agent Slope: 60 (ชันขึ้นเพื่อให้ขึ้นบันไดได้)
+            // - Agent Step Height: 0.5 (สูงขึ้นสำหรับขั้นบันได)
+
             surface.BuildNavMesh();
 
             // 2.5 เรียกคนออกมาเดิน

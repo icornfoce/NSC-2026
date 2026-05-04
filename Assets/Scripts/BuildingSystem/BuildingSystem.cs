@@ -40,7 +40,6 @@ namespace Simulation.Building
         [SerializeField] private StructureData pillarReference;
 
         [Header("Budget")]
-        [SerializeField] private float initialBudget = 1000f;
         private float _currentBudget;
 
         [Header("General SFX / VFX")]
@@ -123,7 +122,6 @@ namespace Simulation.Building
 
         private void Start()
         {
-            _currentBudget = initialBudget;
             if (mainCamera == null) mainCamera = UnityEngine.Camera.main;
             if (ghostBuilder == null) ghostBuilder = GetComponent<GhostBuilder>();
             
@@ -917,48 +915,102 @@ namespace Simulation.Building
             Rigidbody newRb = structureObj.GetComponent<Rigidbody>();
             if (newRb == null) return;
 
-            // Remove existing joints just to be safe
+            // 1. Remove existing joints
             Joint[] existingJoints = structureObj.GetComponents<Joint>();
             foreach (var j in existingJoints) Destroy(j);
 
-            FixedJoint fixedJoint = structureObj.AddComponent<FixedJoint>();
-
-            if (targetCollider != null)
+            // 2. Find the actual collider directly beneath this specific structure.
+            // This is crucial for drag-placement, as the mouse-hit collider (targetCollider)
+            // might not be the one supporting this specific instance in a line of structures.
+            Collider actualTarget = null;
+            
+            // Raycast down from slightly above the bottom of the structure
+            float pivotToBottom = GetPivotToBottomOffset(structureObj);
+            
+            // We start slightly BELOW the bottom to avoid hitting our own colliders
+            Vector3 rayStart = structureObj.transform.position - new Vector3(0, pivotToBottom + 0.05f, 0);
+            if (UnityEngine.Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, 0.4f, groundLayer | structureLayer))
             {
-                // ── ค้นหา Rigidbody ของเป้าหมายให้แม่นยำที่สุด ──
-                Rigidbody targetRb = null;
+                actualTarget = hit.collider;
+            }
 
-                // 1. ถ้าเป้าหมายเป็นโครงสร้าง → หา Rigidbody จาก StructureUnit โดยตรง
-                var targetUnit = targetCollider.GetComponentInParent<StructureUnit>();
-                if (targetUnit != null)
+            // Fallback to targetCollider ONLY if it's adjacent/touching
+            // This prevents dragged structures from forming long invisible joints to the start point
+            if (actualTarget == null && targetCollider != null)
+            {
+                bool isTouching = false;
+                Collider[] myCols = structureObj.GetComponentsInChildren<Collider>();
+                Collider[] targetCols = targetCollider.GetComponentsInChildren<Collider>();
+                
+                UnityEngine.Physics.SyncTransforms();
+
+                foreach (var mc in myCols)
                 {
-                    targetRb = targetUnit.GetComponent<Rigidbody>();
+                    Bounds expanded = mc.bounds;
+                    expanded.Expand(0.2f); // tolerance for adjacency
+                    foreach (var tc in targetCols)
+                    {
+                        if (expanded.Intersects(tc.bounds))
+                        {
+                            isTouching = true;
+                            break;
+                        }
+                    }
+                    if (isTouching) break;
                 }
 
-                // 2. Fallback: ค้นหาจาก hierarchy ขึ้นไป
-                if (targetRb == null)
+                if (isTouching)
                 {
-                    targetRb = targetCollider.GetComponentInParent<Rigidbody>();
+                    actualTarget = targetCollider;
                 }
+            }
 
-                // 3. Fallback สุดท้าย: ค้นหาจาก root ของ object
-                if (targetRb == null)
-                {
-                    targetRb = targetCollider.transform.root.GetComponent<Rigidbody>();
-                }
+            if (actualTarget == null) return;
 
-                // ถ้า targetRb ยังเป็น null → จะต่อกับ world (เหมาะกับพื้น/ground)
-                fixedJoint.connectedBody = targetRb;
+            // 3. Identify the target Rigidbody
+            bool isGround = ((1 << actualTarget.gameObject.layer) & groundLayer) != 0;
+            Rigidbody targetRb = null;
+
+            // Try to get Rigidbody from StructureUnit first
+            var targetUnit = actualTarget.GetComponentInParent<StructureUnit>();
+            if (targetUnit != null)
+            {
+                targetRb = targetUnit.GetComponent<Rigidbody>();
+            }
+
+            // Fallback to searching up the hierarchy
+            if (targetRb == null)
+            {
+                targetRb = actualTarget.GetComponentInParent<Rigidbody>();
+            }
+
+            // 4. Safety Check: Cannot connect to itself
+            if (targetRb == newRb)
+            {
+                targetRb = null;
+                // If the only thing we found was ourselves, we should check if we have other support
+                // For now, if it's ourselves, we treat it as if no support was found via raycast
+                if (!isGround) actualTarget = null; 
+            }
+
+            if (actualTarget == null) return;
+
+            // 5. Only create a joint if it's ground or another structure with a Rigidbody.
+            if (isGround || targetRb != null)
+            {
+                FixedJoint fixedJoint = structureObj.AddComponent<FixedJoint>();
+                fixedJoint.connectedBody = targetRb; // null = fixed to world (correct for ground)
 
                 // Ignore physics collision between the structure and ALL colliders of the target
                 Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
-                Collider[] targetColliders = targetCollider.transform.root.GetComponentsInChildren<Collider>();
+                Collider[] targetColliders = actualTarget.transform.root.GetComponentsInChildren<Collider>();
                 
                 foreach (var col in myColliders)
                 {
-                    foreach (var targetCol in targetColliders)
+                    foreach (var tCol in targetColliders)
                     {
-                        UnityEngine.Physics.IgnoreCollision(col, targetCol, true);
+                        if (col != null && tCol != null)
+                            UnityEngine.Physics.IgnoreCollision(col, tCol, true);
                     }
                 }
             }

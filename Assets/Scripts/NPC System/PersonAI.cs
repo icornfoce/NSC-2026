@@ -66,6 +66,11 @@ namespace Simulation.Character
                     _agent.speed = moveSpeed;
                     _agent.stoppingDistance = arrivalDistance;
                     _agent.updateRotation = true;
+
+                    // ปรับแต่งค่า Agent ให้ลอดช่องแคบและขึ้นที่ชันได้ดีขึ้น
+                    _agent.radius = 0.3f;     // เล็กลงเพื่อให้ลอดประตูได้
+                    _agent.height = 1.8f;     // ความสูงมาตรฐาน
+                    _agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance; // ลดการเบียดกันเองจนติด
                 }
                 else
                 {

@@ -10,15 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0837ce6ae0cc02d4386014dddfbffbab, type: 3}
-  m_Name: Mission-LV.2
+  m_Name: Mission-Test
   m_EditorClassIdentifier: Assembly-CSharp::Simulation.Mission.MissionData
-  missionName: Lv.2
+  missionName: Test
   description: 
-  requiredFloors: 2
-  requiredAreaPerFloor: 16
+  requiredFloors: 1
+  requiredAreaPerFloor: 1
   requiredPopulation: 1
-  startingBudget: 5500
-  disasters:
-  - disasterData: {fileID: 11400000, guid: 48f7c7d3298968b48adaebc85312cc2e, type: 2}
-    startTime: 5
+  startingBudget: 99999
+  disasters: []
   simulationDuration: 15
