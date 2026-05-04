@@ -72,10 +72,18 @@ namespace Simulation.Character
                     _agent.radius = 0.3f;     // เล็กลงเพื่อให้ลอดประตูได้
                     _agent.height = 1.8f;     // ความสูงมาตรฐาน
                     _agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance; // ลดการเบียดกันเองจนติด
+
+                    // ปิดระบบฟิสิกส์ระหว่างเดินด้วย NavMesh เพื่อไม่ให้เกิดแรงมหาศาลไปผลักสิ่งก่อสร้างจนพัง และไม่ให้ติดขอบบันได
+                    if (_rb != null) _rb.isKinematic = true;
+                    var col = GetComponent<CapsuleCollider>();
+                    if (col != null) col.isTrigger = true;
                 }
                 else
                 {
                     _agent.enabled = false;
+                    if (_rb != null) _rb.isKinematic = false;
+                    var col = GetComponent<CapsuleCollider>();
+                    if (col != null) col.isTrigger = false;
                 }
             }
         }
@@ -94,7 +102,7 @@ namespace Simulation.Character
             if (_isDead || _target == null) return;
 
             // สั่งให้เดินตามเป้าหมายด้วย NavMesh
-            if (_agent != null && _agent.isOnNavMesh)
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
             {
                 _agent.SetDestination(_target.position);
                 
@@ -109,6 +117,14 @@ namespace Simulation.Character
                     }
                 }
             }
+            else if (_agent != null && _agent.enabled && !_agent.isOnNavMesh)
+            {
+                // พื้น NavMesh หายไป (เช่น พื้นถล่ม) ปิด Agent และเปิดฟิสิกส์ให้ร่วง
+                _agent.enabled = false;
+                if (_rb != null) _rb.isKinematic = false;
+                var col = GetComponent<CapsuleCollider>();
+                if (col != null) col.isTrigger = false;
+            }
         }
 
         public void TakeDamage(float amount)
@@ -122,9 +138,25 @@ namespace Simulation.Character
             }
         }
 
+        private void OnTriggerEnter(Collider other)
+        {
+            if (_isDead) return;
+
+            // ขณะที่กำลังเดิน (isTrigger = true) ให้รับความเสียหายจากสิ่งของที่ร่วงลงมาโดน
+            Rigidbody otherRb = other.attachedRigidbody;
+            if (otherRb != null)
+            {
+                float impact = otherRb.linearVelocity.magnitude;
+                if (impact > damageImpactThreshold)
+                {
+                    TakeDamage(impact * 5f);
+                }
+            }
+        }
+
         private void OnCollisionEnter(Collision collision)
         {
-            // ถอดความเสียหายจากการโดนของหล่นทับ หรือตกจากที่สูง
+            // รับความเสียหายเมื่อฟิสิกส์ทำงานปกติ (เช่น ตกจากที่สูงตอนพื้นพัง)
             if (collision.relativeVelocity.magnitude > damageImpactThreshold)
             {
                 TakeDamage(collision.relativeVelocity.magnitude * 5f);
