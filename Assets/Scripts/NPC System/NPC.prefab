@@ -182,4 +182,4 @@ MonoBehaviour:
   arrivalDistance: 0.01
   maxHealth: 100
   deathVFX: {fileID: 5985634496115995773, guid: 463cf9f7af4680240898f6aeba3fe3e6, type: 3}
-  damageImpactThreshold: 500
+  damageImpactThreshold: 10

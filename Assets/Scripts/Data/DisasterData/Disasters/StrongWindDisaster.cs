@@ -13,7 +13,8 @@ namespace Simulation.Mission
 
         protected override void OnUpdate(float dt)
         {
-            Vector3 force = data.windDirection.normalized * data.intensity;
+            // แรงลม = ทิศทาง * ความรุนแรง * ตัวคูณแรงลม (เพื่อให้ปรับแรงผลักได้กว้างขึ้น)
+            Vector3 force = data.windDirection.normalized * (data.intensity * data.windForceMultiplier);
 
             var structures = GetStructuresInRadius(data.centerOffset, data.radius);
             foreach (var unit in structures)
@@ -40,11 +41,28 @@ namespace Simulation.Mission
             foreach (var person in people)
             {
                 if (person == null) continue;
-                Rigidbody prb = person.GetComponent<Rigidbody>();
-                if (prb != null)
+                
+                // ถ้าลมแรงพอ (เช่น force > 500) ให้คนปลิวกระเด็น
+                if (force.magnitude > 500f)
                 {
-                    prb.AddForce(force * 0.3f, ForceMode.Force);
+                    var agent = person.GetComponent<UnityEngine.AI.NavMeshAgent>();
+                    if (agent != null && agent.enabled)
+                    {
+                        agent.enabled = false;
+                        var col = person.GetComponent<CapsuleCollider>();
+                        if (col != null) col.isTrigger = false;
+                        
+                        Rigidbody rbCheck = person.GetComponent<Rigidbody>();
+                        if (rbCheck != null) rbCheck.isKinematic = false;
+                    }
                 }
+
+                Rigidbody prb = person.GetComponent<Rigidbody>();
+                if (prb != null && !prb.isKinematic)
+                {
+                    prb.AddForce(force * 0.5f, ForceMode.Force);
+                }
+                
                 if (data.peopleDamagePerSecond > 0f)
                 {
                     DamagePerson(person, data.peopleDamagePerSecond * dt);

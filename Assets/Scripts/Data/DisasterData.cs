@@ -66,6 +66,9 @@ namespace Simulation.Mission
         [Tooltip("StrongWind: ทิศทางลม (normalized)")]
         public Vector3 windDirection = Vector3.right;
 
+        [Tooltip("StrongWind: ตัวคูณแรงลม (นำไปคูณกับ intensity เพื่อให้ผลักของหนักๆ ได้)")]
+        public float windForceMultiplier = 50f;
+
         [Tooltip("UFO: จำนวนของที่จะดูดสูงสุด")]
         public int ufoMaxTargets = 3;
 

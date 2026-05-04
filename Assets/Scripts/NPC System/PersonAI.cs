@@ -29,6 +29,8 @@ namespace Simulation.Character
         private Rigidbody _rb;
         private NavMeshAgent _agent;
         private bool _isDead = false;
+        private float _wanderTimer;
+        private Vector3 _wanderTarget;
 
         public bool IsDead => _isDead;
         public bool HasReachedTarget { get; private set; } = false;
@@ -101,25 +103,51 @@ namespace Simulation.Character
         {
             if (_isDead || _target == null) return;
 
+            // เช็คว่ายังมีพื้นรองรับอยู่หรือไม่ (ป้องกันการเดินลอยบนอากาศหากพื้นพังไปแล้วแต่ NavMesh ยังไม่ถูกลบ)
+            float rayDist = 0.8f; // ระยะประมาณก้าวขึ้นบันได (0.6) + เผื่อเหลือ (0.2)
+            bool hasFloor = UnityEngine.Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, rayDist, UnityEngine.Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
             // สั่งให้เดินตามเป้าหมายด้วย NavMesh
-            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh && hasFloor)
             {
-                _agent.SetDestination(_target.position);
-                
-                // เช็คว่าถึงเป้าหมายหรือยัง
-                if (!_agent.pathPending && _agent.remainingDistance <= arrivalDistance)
+                if (HasReachedTarget)
                 {
-                    HasReachedTarget = true;
-                    // ถึงแล้ว ซ่อนเป้าหมายทิ้ง
-                    if (_target.gameObject.activeSelf)
+                    // พอถึงเป้าหมายแล้ว ให้เดินวนรอบๆ เป้าหมายแทนการยืนนิ่งๆ
+                    _wanderTimer -= Time.deltaTime;
+                    if (_wanderTimer <= 0f || (_agent.remainingDistance <= 0.5f && !_agent.pathPending))
                     {
-                        _target.gameObject.SetActive(false);
+                        Vector2 randomCircle = Random.insideUnitCircle * 3f;
+                        Vector3 randomPos = _target.position + new Vector3(randomCircle.x, 0, randomCircle.y);
+                        
+                        if (UnityEngine.AI.NavMesh.SamplePosition(randomPos, out UnityEngine.AI.NavMeshHit hit, 3f, UnityEngine.AI.NavMesh.AllAreas))
+                        {
+                            _wanderTarget = hit.position;
+                        }
+                        else
+                        {
+                            _wanderTarget = _target.position;
+                        }
+                        
+                        _agent.SetDestination(_wanderTarget);
+                        _wanderTimer = Random.Range(2f, 5f); // สุ่มจุดเดินใหม่ทุกๆ 2-5 วินาที
+                    }
+                }
+                else
+                {
+                    _agent.SetDestination(_target.position);
+                    
+                    // เช็คว่าถึงเป้าหมายหรือยัง
+                    if (!_agent.pathPending && _agent.remainingDistance <= arrivalDistance)
+                    {
+                        HasReachedTarget = true;
+                        _wanderTarget = _target.position; // เริ่มเดินวนจากจุดนี้
                     }
                 }
             }
-            else if (_agent != null && _agent.enabled && !_agent.isOnNavMesh)
+            else if (_agent != null && _agent.enabled && (!_agent.isOnNavMesh || !hasFloor))
             {
-                // พื้น NavMesh หายไป (เช่น พื้นถล่ม) ปิด Agent และเปิดฟิสิกส์ให้ร่วง
+                // พื้น NavMesh หายไป หรือ ไม่มีพื้นรองรับด้านล่างแล้ว (พื้นถล่ม) 
+                // ปิด Agent และเปิดฟิสิกส์ให้ร่วง
                 _agent.enabled = false;
                 if (_rb != null) _rb.isKinematic = false;
                 var col = GetComponent<CapsuleCollider>();
@@ -146,10 +174,12 @@ namespace Simulation.Character
             Rigidbody otherRb = other.attachedRigidbody;
             if (otherRb != null)
             {
+                // คิดน้ำหนักของสิ่งที่มาชนด้วย (มวลยิ่งเยอะ ยิ่งเจ็บ)
                 float impact = otherRb.linearVelocity.magnitude;
                 if (impact > damageImpactThreshold)
                 {
-                    TakeDamage(impact * 5f);
+                    float massFactor = Mathf.Clamp(otherRb.mass, 1f, 500f);
+                    TakeDamage(impact * massFactor * 2f);
                 }
             }
         }
@@ -159,7 +189,13 @@ namespace Simulation.Character
             // รับความเสียหายเมื่อฟิสิกส์ทำงานปกติ (เช่น ตกจากที่สูงตอนพื้นพัง)
             if (collision.relativeVelocity.magnitude > damageImpactThreshold)
             {
-                TakeDamage(collision.relativeVelocity.magnitude * 5f);
+                // ถ้าตกพื้นเอง คิดแค่มวลตัวเอง แต่ถ้ามีของหล่นมาทับต่อ ให้คิดมวลของชิ้นนั้น
+                float massFactor = 1f;
+                if (collision.rigidbody != null)
+                {
+                    massFactor = Mathf.Clamp(collision.rigidbody.mass, 1f, 500f);
+                }
+                TakeDamage(collision.relativeVelocity.magnitude * massFactor * 2f);
             }
         }
 

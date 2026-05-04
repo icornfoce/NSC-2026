@@ -10,11 +10,17 @@ namespace Simulation.Character
     {
         [Header("Transparency")]
         [SerializeField] private float alpha = 0.15f;
+        [SerializeField] private float fadeSpeed = 5f;
+
+        private Material[] _materials;
+        private float _currentAlpha;
 
         private void Start()
         {
-            // ทำเป็นตัวใสเมื่อเริ่มเกม
+            _currentAlpha = alpha;
             Renderer[] renderers = GetComponentsInChildren<Renderer>();
+            System.Collections.Generic.List<Material> mats = new System.Collections.Generic.List<Material>();
+
             foreach (var r in renderers)
             {
                 if (r.material != null)
@@ -30,16 +36,42 @@ namespace Simulation.Character
                     r.material.renderQueue = 3000;
 
                     Color c = r.material.color;
-                    c.a = alpha;
+                    c.a = _currentAlpha;
                     r.material.color = c;
+
+                    mats.Add(r.material);
                 }
             }
+            _materials = mats.ToArray();
 
             // ปิด Collider ไม่ให้เป็นส่วนหนึ่งของฟิสิกส์สิ่งก่อสร้าง
             Collider[] cols = GetComponentsInChildren<Collider>();
             foreach (var col in cols)
             {
                 col.isTrigger = true; 
+            }
+        }
+
+        private void Update()
+        {
+            // หาเป้าหมายความทึบตามสถานะของการจำลอง
+            bool isSimulating = Simulation.Physics.SimulationManager.Instance != null && Simulation.Physics.SimulationManager.Instance.IsSimulating;
+            float targetAlpha = isSimulating ? 0f : alpha;
+
+            // ค่อยๆ Fade สี
+            if (Mathf.Abs(_currentAlpha - targetAlpha) > 0.001f)
+            {
+                _currentAlpha = Mathf.Lerp(_currentAlpha, targetAlpha, Time.deltaTime * fadeSpeed);
+                
+                foreach (var mat in _materials)
+                {
+                    if (mat != null)
+                    {
+                        Color c = mat.color;
+                        c.a = _currentAlpha;
+                        mat.color = c;
+                    }
+                }
             }
         }
     }
