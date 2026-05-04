@@ -465,12 +465,32 @@ namespace Simulation.Building
                 MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
                 float materialPrice = mat != null ? mat.priceModifier : 0f;
                 float itemPrice = _selectedData.basePrice + materialPrice;
+
+                // NEW: Pre-calculate if any piece in the drag group has world support
+                bool groupHasWorldSupport = false;
+                if (_isDragging)
+                {
+                    foreach (var pos in _dragPositions)
+                    {
+                        if (IsSupportedByWorld(pos, ghostBuilder.CurrentRotation, _selectedData))
+                        {
+                            groupHasWorldSupport = true;
+                            break;
+                        }
+                    }
+                }
                 
                 foreach (var pos in _dragPositions)
                 {
                     bool isClear = IsAreaClear(pos, ghostBuilder.CurrentRotation, _selectedData);
-                    bool hasSupport = HasStructuralSupport(pos, ghostBuilder.CurrentRotation, _selectedData);
-                    bool isOnStructure = !_selectedData.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
+                    
+                    // For dragging, pieces support each other if the group is supported somewhere
+                    bool hasSupport = _isDragging ? groupHasWorldSupport : HasStructuralSupport(pos, ghostBuilder.CurrentRotation, _selectedData);
+                    
+                    // Relax 'placeOnStructureOnly' during drag if the group is supported
+                    bool isOnStructure = !_selectedData.placeOnStructureOnly || 
+                                       (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null) ||
+                                       (_isDragging && groupHasWorldSupport);
                     
                     bool doorValid = true;
                     if (_selectedData.structureType == StructureType.Door)
@@ -481,7 +501,6 @@ namespace Simulation.Building
                     if (!(isClear && hasSupport && isOnStructure && doorValid))
                     {
                         allValid = false;
-                        // Don't break, we still need to calculate total cost for the UI feedback
                     }
                     totalCost += itemPrice;
                 }
@@ -1726,19 +1745,59 @@ namespace Simulation.Building
         {
             if (data == null || data.prefab == null) return true;
 
-            // 1. ตรวจสอบพื้นดินโดยตรงด้านล่าง
+            // 1. ตรวจสอบจุดยึดกับโลกจริง (พื้นดิน หรือ โครงสร้างที่วางไปแล้ว)
+            if (IsSupportedByWorld(position, rotation, data)) return true;
+
+            // 2. พิเศษ: สำหรับระบบลากสร้าง (Drag) ให้ถือว่าชิ้นส่วนที่กำลังลาก "เกาะ" กันเองได้
+            // โดยต้องมีอย่างน้อยหนึ่งชิ้นในกลุ่มที่เกาะกับโลกจริง
+            if (_isDragging && _dragPositions != null && _dragPositions.Count > 1)
+            {
+                // เพื่อประสิทธิภาพ เราจะเช็คแค่ว่า "มีสักชิ้นในกลุ่มที่มีจุดยึดโลก" 
+                // และ "ชิ้นนี้อยู่ใกล้ชิ้นอื่นในกลุ่ม"
+                bool groupHasWorldSupport = false;
+                foreach (var p in _dragPositions)
+                {
+                    if (IsSupportedByWorld(p, rotation, data))
+                    {
+                        groupHasWorldSupport = true;
+                        break;
+                    }
+                }
+
+                if (groupHasWorldSupport)
+                {
+                    // ชิ้นส่วนในกลุ่มลากเดียวกันถือว่ารองรับกันเอง
+                    foreach (var otherPos in _dragPositions)
+                    {
+                        if (otherPos == position) continue;
+                        // ถ้าอยู่ติดกัน (Grid size) ให้ถือว่าเกาะกัน
+                        if (Vector3.Distance(position, otherPos) < gridSize * 1.5f) return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// ตรวจสอบว่าตำแหน่งนี้มีจุดยึดกับโลกจริงหรือไม่ (พื้นดิน หรือ โครงสร้างที่วางไว้แล้ว)
+        /// ไม่นับรวมชิ้นส่วนที่กำลังลากสร้างอยู่ในขณะนี้
+        /// </summary>
+        private bool IsSupportedByWorld(Vector3 position, float rotation, StructureData data)
+        {
+            // 1. ตรวจสอบพื้นดิน หรือ สิ่งก่อสร้างที่วางไปแล้ว ด้านล่างโดยตรง
             float pivotToBottom = GetPivotToBottomOffset(data);
             Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
             Ray downRay = new Ray(bottomCenter + Vector3.up * 0.1f, Vector3.down);
-            if (UnityEngine.Physics.Raycast(downRay, 0.4f, groundLayer)) return true;
+            
+            // ตรวจสอบทั้งพื้นดิน (groundLayer) และโครงสร้างอื่น (structureLayer)
+            if (UnityEngine.Physics.Raycast(downRay, 0.4f, groundLayer | structureLayer)) return true;
 
             // 2. ตรวจสอบการสัมผัสกับสิ่งก่อสร้างอื่น หรือพื้นผิวข้างเคียง (Adjacency)
-            // ใช้ Bounds ที่ขยายขนาดขึ้นเล็กน้อยเพื่อเช็คว่าชนกับอะไรไหม
             Bounds b = GetGridBounds(position, rotation, data);
-            // ขยาย Bounds ออกไป 0.1m ทุกทิศทาง
             Vector3 checkSize = b.size + new Vector3(0.2f, 0.2f, 0.2f);
             
-            // ถ้ามีอะไรอยู่ในขอบเขตที่ขยายออกมา (และไม่ใช่ตัวเอง) แสดงว่ามีการเชื่อมต่อ
+            // เช็คว่า Bounds ที่ขยายออกไปชนกับ Ground หรือ Structure อื่นหรือไม่
             return UnityEngine.Physics.CheckBox(b.center, checkSize * 0.5f, Quaternion.Euler(0, rotation, 0), groundLayer | structureLayer);
         }
 
