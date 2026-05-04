@@ -19,7 +19,7 @@ MonoBehaviour:
   baseHP: 100
   size: {x: 1, y: 1, z: 4}
   pivotAtCenter: 1
-  allowOverlap: 1
+  allowOverlap: 0
   placementSinkThrough: 0
   requiresSupport: 0
   placeOnStructureOnly: 0

@@ -244,7 +244,7 @@ namespace Simulation.Mission
             StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
             if (units.Length == 0) return 0;
 
-            float heightStep = BuildingSystem.Instance != null ? BuildingSystem.Instance.GetGridSize : 3f;
+            float heightStep = BuildingSystem.Instance != null ? BuildingSystem.Instance.HeightStep : 3f;
             HashSet<int> floorLevels = new HashSet<int>();
 
             foreach (var unit in units)
@@ -253,7 +253,7 @@ namespace Simulation.Mission
                 // กรอง: นับชิ้นส่วนประเภท Floor หรือ Normal (เช่น เสา) เป็นตัวระบุชั้น
                 if (unit.Data != null && unit.Data.structureType != Simulation.Data.StructureType.Floor && unit.Data.structureType != Simulation.Data.StructureType.Normal) continue;
 
-                int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep);
+                int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep) + 1;
                 floorLevels.Add(floor);
             }
 
@@ -269,7 +269,7 @@ namespace Simulation.Mission
             StructureUnit[] units = FindObjectsByType<StructureUnit>(FindObjectsSortMode.None);
             if (units.Length == 0) return 0;
 
-            float heightStep = BuildingSystem.Instance != null ? BuildingSystem.Instance.GetGridSize : 3f;
+            float heightStep = BuildingSystem.Instance != null ? BuildingSystem.Instance.HeightStep : 3f;
             float gridSize = BuildingSystem.Instance != null ? BuildingSystem.Instance.GetGridSize : 1f;
 
             // นับพื้นที่ต่อชั้น
@@ -282,7 +282,7 @@ namespace Simulation.Mission
                 // นับเฉพาะ Floor structures
                 if (unit.Data.structureType != Simulation.Data.StructureType.Floor) continue;
 
-                int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep);
+                int floor = Mathf.RoundToInt(unit.transform.position.y / heightStep) + 1;
                 if (!floorAreas.ContainsKey(floor))
                 {
                     floorAreas[floor] = new HashSet<Vector2Int>();

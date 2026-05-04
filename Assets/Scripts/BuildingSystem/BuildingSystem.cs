@@ -76,8 +76,8 @@ namespace Simulation.Building
         private bool _justEnteredPlacing = false;
 
         // Floor-level system
-        private int _currentFloor = 0;
-        private int _maxOccupiedFloor = 0;
+        private int _currentFloor = 1;
+        private int _maxOccupiedFloor = 1;
 
         // Undo / Redo System
         private class BuildAction
@@ -105,6 +105,7 @@ namespace Simulation.Building
         public int GridColumns => gridColumns;
         public int GridRows => gridRows;
         public float GetGridSize => gridSize;
+        public float HeightStep => heightStep > 0f ? heightStep : gridSize;
 
         /// <summary>
         /// ตั้งงบประมาณจากภายนอก (เช่น MissionManager)
@@ -239,8 +240,8 @@ namespace Simulation.Building
         {
             if (Input.GetKeyDown(KeyCode.Q))
             {
-                // Go DOWN one floor (minimum = 0)
-                if (_currentFloor > 0)
+                // Go DOWN one floor (minimum = 1)
+                if (_currentFloor > 1)
                 {
                     _currentFloor--;
                     NotifyCameraFloorChanged();
@@ -264,7 +265,7 @@ namespace Simulation.Building
         /// </summary>
         private void RecalculateMaxFloor()
         {
-            _maxOccupiedFloor = 0;
+            _maxOccupiedFloor = 1;
             foreach (var unit in _placedStructures)
             {
                 if (unit == null) continue;
@@ -280,7 +281,7 @@ namespace Simulation.Building
         public int GetFloorFromY(float worldY)
         {
             float step = heightStep > 0f ? heightStep : gridSize;
-            return Mathf.Max(0, Mathf.RoundToInt(worldY / step));
+            return Mathf.Max(1, Mathf.RoundToInt(worldY / step) + 1);
         }
 
         /// <summary>
@@ -289,7 +290,7 @@ namespace Simulation.Building
         public float GetFloorY(int floor)
         {
             float step = heightStep > 0f ? heightStep : gridSize;
-            return floor * step;
+            return Mathf.Max(0, floor - 1) * step;
         }
 
         private void NotifyCameraFloorChanged()
@@ -929,14 +930,23 @@ namespace Simulation.Building
             // might not be the one supporting this specific instance in a line of structures.
             Collider actualTarget = null;
             
-            // Raycast down from slightly above the bottom of the structure
+            // Raycast down from slightly ABOVE the bottom of the structure
             float pivotToBottom = GetPivotToBottomOffset(structureObj);
             
-            // We start slightly BELOW the bottom to avoid hitting our own colliders
-            Vector3 rayStart = structureObj.transform.position - new Vector3(0, pivotToBottom + 0.05f, 0);
-            if (UnityEngine.Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, 0.4f, groundLayer | structureLayer))
+            // We start slightly ABOVE the bottom to catch the surface we are placed on,
+            // but we must ignore our own colliders.
+            Vector3 rayStart = structureObj.transform.position - new Vector3(0, pivotToBottom - 0.1f, 0);
+            RaycastHit[] hits = UnityEngine.Physics.RaycastAll(rayStart, Vector3.down, 0.4f, groundLayer | structureLayer);
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            foreach (var hit in hits)
             {
+                // Skip if we hit ourselves (check root to be safe with compound colliders)
+                if (hit.collider.gameObject == structureObj || hit.collider.transform.IsChildOf(structureObj.transform))
+                    continue;
+
                 actualTarget = hit.collider;
+                break;
             }
 
             // Fallback to targetCollider ONLY if it's adjacent/touching

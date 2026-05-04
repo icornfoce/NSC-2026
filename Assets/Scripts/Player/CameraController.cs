@@ -306,7 +306,7 @@ namespace Simulation.Camera
         /// <summary>
         /// Current floor index being viewed (read-only from outside).
         /// </summary>
-        public int CurrentViewFloor { get; private set; } = 0;
+        public int CurrentViewFloor { get; private set; } = 1;
 
         public void FocusOn(Vector3 point)
         {
