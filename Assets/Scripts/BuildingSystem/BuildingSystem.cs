@@ -752,6 +752,9 @@ namespace Simulation.Building
             // Material persists across mode changes — don't clear it here
             _currentMode = BuildMode.Idle;
             _justEnteredPlacing = false;
+            // Reset drag state to prevent carry-over when switching structures
+            _isDragging = false;
+            _dragPositions.Clear();
             ghostBuilder.DestroyGhost();
             ClearHover();
         }
