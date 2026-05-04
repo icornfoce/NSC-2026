@@ -335,8 +335,17 @@ namespace Simulation.Physics
                 Debug.Log($"[StructuralStress] *** BREAK *** {name}", this);
             }
 
-            // Trigger a strong camera shake when a structure breaks
-            Building.BuildingSystem.Instance?.TriggerCameraShake(2.0f);
+            // Trigger camera shake and sound when a structure breaks
+            var unit = GetComponent<Building.StructureUnit>();
+            float shakeIntensity = 2.0f;
+            if (unit != null && unit.Data != null)
+            {
+                shakeIntensity = unit.Data.breakShakeIntensity;
+                if (unit.Data.breakSFX != null)
+                    AudioSource.PlayClipAtPoint(unit.Data.breakSFX, transform.position);
+            }
+            
+            Building.BuildingSystem.Instance?.TriggerCameraShake(shakeIntensity);
 
             // 1. Destroy ALL joints (main + side joints) so pieces fully separate
             Joint[] allJoints = GetComponents<Joint>();
@@ -370,7 +379,6 @@ namespace Simulation.Physics
             }
 
             // 5. Play break effects via StructureUnit if available
-            var unit = GetComponent<Building.StructureUnit>();
             if (unit != null)
             {
                 if (unit.CurrentMaterial != null)

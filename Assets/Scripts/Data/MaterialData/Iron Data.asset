@@ -17,9 +17,9 @@ MonoBehaviour:
   massModifier: 0
   hpModifier: 0
   material: {fileID: 2100000, guid: 18c4e4cb1fa527a408c5c3f8df686fa0, type: 2}
-  placeSound: {fileID: 0}
-  breakSound: {fileID: 0}
-  placeVFX: {fileID: 0}
-  breakVFX: {fileID: 0}
-  maxCompression: 1000
-  maxTension: 1000
+  placeSound: {fileID: 8300000, guid: 45c54dcc7098852419e34f151fd21b43, type: 3}
+  breakSound: {fileID: 8300000, guid: 10a92f77c96cdf34dab9bd3df225b9c5, type: 3}
+  placeVFX: {fileID: 1076566125589518086, guid: 03719e542f88b1e4c89bfbba2503de75, type: 3}
+  breakVFX: {fileID: 5880797563127281583, guid: 265d3a5ba69981a4698ceabcedf368b0, type: 3}
+  compressionModifier: 0
+  tensionModifier: 0

@@ -48,6 +48,8 @@ namespace Simulation.Data
         public GameObject prefab;
         public MaterialData defaultMaterial;
         public GameObject breakVFX;
+        public AudioClip breakSFX;
+        [Range(0f, 5f)] public float breakShakeIntensity = 2.0f;
 
         [Header("Door Settings")]
         [Tooltip("The prefab to replace the wall with when a door is placed. Only used when structureType = Door.")]
