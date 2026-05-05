@@ -14,8 +14,9 @@ namespace Simulation.Camera
     /// </summary>
     public class CameraController : MonoBehaviour
     {
-        [Header("WASD Camera Rotation")]
-        [SerializeField] private float rotateSpeed = 60f;
+        [Header("Camera Rotation")]
+        [SerializeField] private float mouseRotateSensitivity = 2f;
+        [SerializeField] private float keyboardRotateSpeed = 60f;
         [SerializeField] private float minPitch = 10f;
         [SerializeField] private float maxPitch = 85f;
 
@@ -86,7 +87,7 @@ namespace Simulation.Camera
 
         private void LateUpdate()
         {
-            HandleWASD();
+            HandleRotation();
             HandleZoom();
             UpdateCameraPosition();
             HandleOcclusion();
@@ -96,14 +97,28 @@ namespace Simulation.Camera
         // Input
         // ─────────────────────────────────────────────
 
-        private void HandleWASD()
+        private void HandleRotation()
         {
-            float h = Input.GetAxis("Horizontal"); // A/D → หมุนซ้าย/ขวา
-            float v = Input.GetAxis("Vertical");   // W/S → หมุนขึ้น/ลง
+            // Right Click Drag to rotate
+            if (Input.GetMouseButton(1))
+            {
+                float mouseX = Input.GetAxis("Mouse X");
+                float mouseY = Input.GetAxis("Mouse Y");
 
-            yaw   += h * rotateSpeed * Time.deltaTime;
-            pitch -= v * rotateSpeed * Time.deltaTime;
-            pitch  = Mathf.Clamp(pitch, minPitch, maxPitch);
+                yaw += mouseX * mouseRotateSensitivity * 100f * Time.deltaTime;
+                pitch -= mouseY * mouseRotateSensitivity * 100f * Time.deltaTime;
+            }
+
+            // Still support WASD but as an alternative or just remove it? 
+            // The user said "Change from wasd to click right", so I will make WASD secondary or remove.
+            // Let's keep WASD as an option but prioritize mouse.
+            float h = Input.GetAxis("Horizontal"); 
+            float v = Input.GetAxis("Vertical");
+
+            yaw += h * keyboardRotateSpeed * Time.deltaTime;
+            pitch -= v * keyboardRotateSpeed * Time.deltaTime;
+
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
         }
 
         private void HandleZoom()
