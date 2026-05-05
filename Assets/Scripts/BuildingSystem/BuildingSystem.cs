@@ -325,7 +325,7 @@ namespace Simulation.Building
 
             // ใช้ SphereCastAll (รัศมีเล็กๆ เพื่อจับขอบ Floor บางได้)
             float castRadius = gridSize * 0.15f;
-            RaycastHit[] hits = UnityEngine.Physics.SphereCastAll(ray, castRadius, 500f, combinedMask, QueryTriggerInteraction.Collide);
+            RaycastHit[] hits = UnityEngine.Physics.SphereCastAll(ray, castRadius, 500f, combinedMask);
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
             // อ่านชุด occluded colliders จากกล้อง (ถ้ามี)
@@ -385,7 +385,7 @@ namespace Simulation.Building
             }
 
             Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-            if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, 500f, structureLayer, QueryTriggerInteraction.Collide))
+            if (UnityEngine.Physics.Raycast(ray, out RaycastHit hit, 500f, structureLayer))
             {
                 // Find StructureUnit on this object or any parent
                 StructureUnit unit = hit.collider.GetComponentInParent<StructureUnit>();
@@ -465,17 +465,32 @@ namespace Simulation.Building
                 MaterialData mat = _selectedMaterial != null ? _selectedMaterial : _selectedData.defaultMaterial;
                 float materialPrice = mat != null ? mat.priceModifier : 0f;
                 float itemPrice = _selectedData.basePrice + materialPrice;
+
+                // NEW: Pre-calculate if any piece in the drag group has world support
+                bool groupHasWorldSupport = false;
+                if (_isDragging)
+                {
+                    foreach (var pos in _dragPositions)
+                    {
+                        if (IsSupportedByWorld(pos, ghostBuilder.CurrentRotation, _selectedData))
+                        {
+                            groupHasWorldSupport = true;
+                            break;
+                        }
+                    }
+                }
                 
                 foreach (var pos in _dragPositions)
                 {
                     bool isClear = IsAreaClear(pos, ghostBuilder.CurrentRotation, _selectedData);
                     
-                    // ตรวจสอบแต่ละชิ้นว่ามีฐานรองรับจริงหรือไม่ (ไม่ใช้ group shortcut)
-                    // ถ้าชิ้นใดลอยอยู่กลางอากาศ → allValid = false → แดงทั้งกลุ่ม
-                    bool hasSupport = IsSupportedByWorld(pos, ghostBuilder.CurrentRotation, _selectedData);
+                    // For dragging, pieces support each other if the group is supported somewhere
+                    bool hasSupport = _isDragging ? groupHasWorldSupport : HasStructuralSupport(pos, ghostBuilder.CurrentRotation, _selectedData);
                     
-                    // placeOnStructureOnly: ต้อง Raycast ลงจากตำแหน่งวางจริง เพื่อหาว่ามี Floor อยู่ข้างล่างหรือไม่
-                    bool isOnStructure = !_selectedData.placeOnStructureOnly || IsPositionOnFloor(pos, _selectedData);
+                    // Relax 'placeOnStructureOnly' during drag if the group is supported
+                    bool isOnStructure = !_selectedData.placeOnStructureOnly || 
+                                       (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null) ||
+                                       (_isDragging && groupHasWorldSupport);
                     
                     bool doorValid = true;
                     if (_selectedData.structureType == StructureType.Door)
@@ -491,24 +506,18 @@ namespace Simulation.Building
                 }
 
                 bool canAfford = _currentBudget >= totalCost;
-                // Ghost is valid if all structural constraints are met, regardless of budget
-                ghostBuilder.UpdateGhosts(_dragPositions, ghostBuilder.CurrentRotation, allValid);
+                ghostBuilder.UpdateGhosts(_dragPositions, ghostBuilder.CurrentRotation, allValid && canAfford);
 
                 // Placement execution on mouse up
                 if (Input.GetMouseButtonUp(0) && _isDragging)
                 {
                     _isDragging = false;
-                    // Strict validation check before placement
-                    if (allValid && _dragPositions.Count > 0)
+                    if (allValid && canAfford && _dragPositions.Count > 0)
                     {
                         foreach (var pos in _dragPositions)
                         {
                             PlaceStructure(pos, ghostBuilder.CurrentRotation, _currentHitCollider);
                         }
-                    }
-                    else
-                    {
-                        Debug.LogWarning("[BuildingSystem] Placement blocked: Invalid position or unsupported structure.");
                     }
                     _dragPositions.Clear();
                 }
@@ -652,23 +661,14 @@ namespace Simulation.Building
                 
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
                 bool hasSupport = HasStructuralSupport(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
-                // placeOnStructureOnly: Raycast ลงจากตำแหน่งวางจริง เพื่อหาว่ามี Floor อยู่ข้างล่างหรือไม่
-                bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || IsPositionOnFloor(placePos, _movingUnit.Data);
+                bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
                 ghostBuilder.SetValid(isClear && hasSupport && isOnStructure);
             }
 
             if (Input.GetMouseButtonDown(0) && _hasValidTarget)
             {
-                // ตรวจสอบความถูกต้องของตำแหน่งก่อนยืนยันการย้าย
-                if (ghostBuilder.IsValid)
-                {
-                    Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
-                    ConfirmMove(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
-                }
-                else
-                {
-                    Debug.LogWarning("[BuildingSystem] Move blocked: Invalid position or unsupported structure.");
-                }
+                Vector3 placePos = CalculatePlacementPosition(_currentHitPos);
+                ConfirmMove(placePos, ghostBuilder.CurrentRotation, _currentHitCollider);
             }
         }
 
@@ -857,14 +857,11 @@ namespace Simulation.Building
                         capturedWall.gameObject.SetActive(false);
                     }
 
-                    // Attach joints BEFORE activating the object
-                    // This ensures StructuralStress.Start() finds the joints
+                    obj.SetActive(true);
                     AttachJoint(obj, targetCollider);
+                    _placedStructures.Add(unit);
                     AttachSideJoints(obj);
                     IgnoreOverlappingCollisions(unit);
-
-                    obj.SetActive(true);
-                    _placedStructures.Add(unit);
 
                     if (mat != null)
                     {
@@ -914,13 +911,10 @@ namespace Simulation.Building
                     unit.transform.rotation = Quaternion.Euler(0, rotation, 0);
                     unit.SetRotation(rotation);
                     unit.name = $"{unit.Data.prefab.name} {GetGridPositionString(position)}";
-                    
-                    // Attach joints BEFORE activating
+                    unit.gameObject.SetActive(true);
                     AttachJoint(unit.gameObject, targetCollider);
                     AttachSideJoints(unit.gameObject);
                     IgnoreOverlappingCollisions(unit);
-
-                    unit.gameObject.SetActive(true);
 
                     if (unit.CurrentMaterial != null && unit.CurrentMaterial.placeSound != null) 
                         AudioSource.PlayClipAtPoint(unit.CurrentMaterial.placeSound, position);
@@ -982,15 +976,13 @@ namespace Simulation.Building
             if (actualTarget == null && targetCollider != null)
             {
                 bool isTouching = false;
-                // Use (true) to include inactive colliders if we are calling this before SetActive(true)
-                Collider[] myCols = structureObj.GetComponentsInChildren<Collider>(true);
-                Collider[] targetCols = targetCollider.GetComponentsInChildren<Collider>(true);
+                Collider[] myCols = structureObj.GetComponentsInChildren<Collider>();
+                Collider[] targetCols = targetCollider.GetComponentsInChildren<Collider>();
                 
                 UnityEngine.Physics.SyncTransforms();
 
                 foreach (var mc in myCols)
                 {
-                    // Bounds of inactive colliders might be unreliable, but SyncTransforms + Expand help
                     Bounds expanded = mc.bounds;
                     expanded.Expand(0.2f); // tolerance for adjacency
                     foreach (var tc in targetCols)
@@ -1047,8 +1039,8 @@ namespace Simulation.Building
                 fixedJoint.connectedBody = targetRb; // null = fixed to world (correct for ground)
 
                 // Ignore physics collision between the structure and ALL colliders of the target
-                Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>(true);
-                Collider[] targetColliders = actualTarget.transform.root.GetComponentsInChildren<Collider>(true);
+                Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
+                Collider[] targetColliders = actualTarget.transform.root.GetComponentsInChildren<Collider>();
                 
                 foreach (var col in myColliders)
                 {
@@ -1076,10 +1068,11 @@ namespace Simulation.Building
             Joint mainJoint = structureObj.GetComponent<Joint>();
             Rigidbody mainConnected = mainJoint != null ? mainJoint.connectedBody : null;
 
-            Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>(true);
+            Collider[] myColliders = structureObj.GetComponentsInChildren<Collider>();
             if (myColliders.Length == 0) return;
 
-            // บังคับให้อัปเดต Bounds ของ Collider ทันทีหลังจาก SetActive(true) หรือก่อนหน้านั้น
+            // บังคับให้อัปเดต Bounds ของ Collider ทันทีหลังจาก SetActive(true)
+            // ป้องกันปัญหา Bounds เป็น (0,0,0) ในเฟรมแรกที่ถูกสร้าง ทำให้หาชิ้นส่วนรอบๆ ไม่เจอ
             UnityEngine.Physics.SyncTransforms();
 
             foreach (var unit in _placedStructures)
@@ -1090,7 +1083,7 @@ namespace Simulation.Building
                 if (otherRb == null || otherRb == mainConnected) continue;
 
                 bool isAdjacent = false;
-                Collider[] otherColliders = unit.GetComponentsInChildren<Collider>(true);
+                Collider[] otherColliders = unit.GetComponentsInChildren<Collider>();
 
                 // ใช้ Bounds Expansion ในการเช็คว่าของอยู่ติดกันหรือไม่
                 // วิธีนี้รองรับชิ้นส่วนทุกขนาด (ช่วยแก้ปัญหา Connected body ไม่ยอมต่อกับของที่กว้างกว่า 1 ช่อง)
@@ -1200,14 +1193,11 @@ namespace Simulation.Building
             float newPrice = newMaterial.priceModifier;
             float diff = newPrice - oldPrice;
 
-            // Budget check removed to allow negative budget
-            /*
             if (_currentBudget < diff)
             {
                 if (generalErrorSound != null) AudioSource.PlayClipAtPoint(generalErrorSound, mainCamera.transform.position);
                 return; // Can't afford
             }
-            */
 
             ExecuteCommand(
                 execute: () => {
@@ -1803,59 +1793,15 @@ namespace Simulation.Building
             Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
             Ray downRay = new Ray(bottomCenter + Vector3.up * 0.1f, Vector3.down);
             
-            // ยิง Raycast ลงไปตรวจสอบพื้นดินหรือสิ่งก่อสร้าง
-            RaycastHit[] verticalHits = UnityEngine.Physics.RaycastAll(bottomCenter + Vector3.up * 0.15f, Vector3.down, 0.5f, groundLayer | structureLayer);
-            foreach (var hit in verticalHits)
-            {
-                // ถ้าเจอพื้นดิน (Ground) ถือว่า Support
-                if (((1 << hit.collider.gameObject.layer) & groundLayer) != 0) return true;
+            // ตรวจสอบทั้งพื้นดิน (groundLayer) และโครงสร้างอื่น (structureLayer)
+            if (UnityEngine.Physics.Raycast(downRay, 0.4f, groundLayer | structureLayer)) return true;
 
-                // ถ้าเจอสิ่งก่อสร้าง ต้องเป็น StructureUnit ที่ไม่ใช่ตัวเอง (Ghost)
-                StructureUnit unit = hit.collider.GetComponentInParent<StructureUnit>();
-                if (unit != null && unit.gameObject != gameObject) return true;
-            }
-
-            // 2. ตรวจสอบการสัมผัสกับสิ่งก่อสร้างอื่น (Adjacency) - ต้องเป็น Structure เท่านั้น
+            // 2. ตรวจสอบการสัมผัสกับสิ่งก่อสร้างอื่น หรือพื้นผิวข้างเคียง (Adjacency)
             Bounds b = GetGridBounds(position, rotation, data);
             Vector3 checkSize = b.size + new Vector3(0.2f, 0.2f, 0.2f);
             
-            // ใช้ OverlapBox เพื่อให้กรองได้ว่าสิ่งที่ชนคือ Structure จริงๆ ไม่ใช่ NPC หรือ Trigger อื่นๆ
-            Collider[] overlaps = UnityEngine.Physics.OverlapBox(b.center, checkSize * 0.5f, Quaternion.Euler(0, rotation, 0), structureLayer);
-            foreach (var col in overlaps)
-            {
-                // ต้องมี StructureUnit และไม่ใช่ตัวเอง
-                StructureUnit unit = col.GetComponentInParent<StructureUnit>();
-                if (unit != null && unit.gameObject != gameObject) return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// ตรวจสอบว่าตำแหน่งวางนี้อยู่บน Floor หรือไม่
-        /// ใช้สำหรับ placeOnStructureOnly เช่น NPC ที่ต้องวางบนพื้นเท่านั้น
-        /// Raycast ลงจากตำแหน่ง Pivot เพื่อหา StructureUnit ที่เป็น Floor
-        /// </summary>
-        private bool IsPositionOnFloor(Vector3 position, StructureData data)
-        {
-            float pivotToBottom = GetPivotToBottomOffset(data);
-            Vector3 bottomCenter = position - new Vector3(0, pivotToBottom, 0);
-            // เริ่มยิงจากสูงขึ้นหน่อย และยิงให้ลึกขึ้นเพื่อความแม่นยำ
-            Ray downRay = new Ray(bottomCenter + Vector3.up * 0.25f, Vector3.down);
-
-            RaycastHit[] hits = UnityEngine.Physics.RaycastAll(downRay, 0.75f, structureLayer);
-            foreach (var hit in hits)
-            {
-                StructureUnit unit = hit.collider.GetComponentInParent<StructureUnit>();
-                // ข้ามตัวเองถ้ากำลังเคลื่อนย้าย
-                if (unit == null || unit == _movingUnit) continue;
-
-                if (unit.Data != null && unit.Data.structureType == StructureType.Floor)
-                {
-                    return true;
-                }
-            }
-            return false;
+            // เช็คว่า Bounds ที่ขยายออกไปชนกับ Ground หรือ Structure อื่นหรือไม่
+            return UnityEngine.Physics.CheckBox(b.center, checkSize * 0.5f, Quaternion.Euler(0, rotation, 0), groundLayer | structureLayer);
         }
 
         // --------------------------------------------------------------------------------
