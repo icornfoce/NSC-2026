@@ -447,9 +447,9 @@ namespace Simulation.Mission
 
         /// <summary>
         /// Evaluate Mission result → 0-3 stars
-        /// ★ Star 1: Everyone survived
-        /// ★ Star 2: No structural damage
-        /// ★ Star 3: Positive budget (Profit)
+        /// ★ Star 1: Everyone survived and reached target
+        /// ★ Star 2: Building still meets requirements after disaster (Floors, Area, Pop)
+        /// ★ Star 3: Budget is not negative
         /// </summary>
         private int EvaluateResult()
         {
@@ -467,39 +467,39 @@ namespace Simulation.Mission
 
             if (!allSurvived)
             {
-                Debug.Log($"  ☆ Star 1: FAILED (Successful {successPeople}/{_initialPeopleCount}) - No stars awarded.");
+                Debug.Log($"  ☆ Star 1: FAILED (Successful {successPeople}/{_initialPeopleCount}) - 0 stars.");
                 return 0; // ต้องรอดทุกคนถึงจะได้ดาวแรก
             }
             
             stars++;
             Debug.Log("  ★ Star 1: Everyone survived! ✓");
 
-            // ★ Star 2: No damage (Prerequisite for Star 3)
-            int intactStructures = CountIntactStructures();
-            bool noBroken = intactStructures >= _initialStructureCount && _initialStructureCount > 0;
+            // ★ Star 2: Requirements check after disaster
+            string validationResult = ValidatePreConditions();
+            bool requirementsStillMet = (validationResult == null);
 
-            if (noBroken)
+            if (requirementsStillMet)
             {
                 stars++;
-                Debug.Log("  ★ Star 2: No structural damage! ✓");
+                Debug.Log("  ★ Star 2: Building requirements still met after disaster! ✓");
 
-                // ★ Star 3: Profit (Only if building is intact)
+                // ★ Star 3: Not in debt
                 float currentBudget = BuildingSystem.Instance != null ? BuildingSystem.Instance.CurrentBudget : 0f;
-                bool isProfit = currentBudget > 0f;
+                bool noDebt = currentBudget >= 0f;
 
-                if (isProfit)
+                if (noDebt)
                 {
                     stars++;
-                    Debug.Log($"  ★ Star 3: Positive budget ({currentBudget:F0}) ✓");
+                    Debug.Log($"  ★ Star 3: Budget is positive ({currentBudget:F0}) ✓");
                 }
                 else
                 {
-                    Debug.Log($"  ☆ Star 3: Negative budget ({currentBudget:F0}) ✗");
+                    Debug.Log($"  ☆ Star 3: Budget is negative ({currentBudget:F0}) ✗");
                 }
             }
             else
             {
-                Debug.Log($"  ☆ Star 2: Structural damage detected ({intactStructures}/{_initialStructureCount}) ✗ - Star 3 locked.");
+                Debug.Log($"  ☆ Star 2: Building failed requirements after disaster ({validationResult}) ✗ - Star 3 locked.");
             }
 
             return stars;
