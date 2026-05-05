@@ -20,7 +20,7 @@ MonoBehaviour:
   allowOverlap: 0
   placementSinkThrough: 0
   requiresSupport: 0
-  placeOnStructureOnly: 0
+  placeOnStructureOnly: 1
   placeOnFloorOnly: 1
   baseMaxCompression: 1000
   baseMaxTension: 1000

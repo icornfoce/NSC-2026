@@ -488,9 +488,11 @@ namespace Simulation.Building
                     bool hasSupport = _isDragging ? groupHasWorldSupport : HasStructuralSupport(pos, ghostBuilder.CurrentRotation, _selectedData);
                     
                     // Relax 'placeOnStructureOnly' during drag if the group is supported
-                    bool isOnStructure = !_selectedData.placeOnStructureOnly || 
-                                       (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null) ||
-                                       (_isDragging && groupHasWorldSupport);
+                    StructureUnit hitUnit = _currentHitCollider != null ? _currentHitCollider.GetComponentInParent<StructureUnit>() : null;
+                    bool isFloor = hitUnit != null && hitUnit.Data.structureType == StructureType.Floor;
+                    bool isTopSurface = _currentHitNormal.y > 0.9f;
+
+                    bool isOnStructure = !_selectedData.placeOnStructureOnly || (isFloor && isTopSurface);
                     
                     bool doorValid = true;
                     if (_selectedData.structureType == StructureType.Door)
@@ -661,7 +663,11 @@ namespace Simulation.Building
                 
                 bool isClear = IsAreaClear(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
                 bool hasSupport = HasStructuralSupport(placePos, ghostBuilder.CurrentRotation, _movingUnit.Data);
-                bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || (_currentHitCollider != null && _currentHitCollider.GetComponentInParent<StructureUnit>() != null);
+                StructureUnit hitUnit = _currentHitCollider != null ? _currentHitCollider.GetComponentInParent<StructureUnit>() : null;
+                bool isFloor = hitUnit != null && hitUnit.Data.structureType == StructureType.Floor;
+                bool isTopSurface = _currentHitNormal.y > 0.9f;
+                bool isOnStructure = !_movingUnit.Data.placeOnStructureOnly || (isFloor && isTopSurface);
+                
                 ghostBuilder.SetValid(isClear && hasSupport && isOnStructure);
             }
 
