@@ -506,13 +506,13 @@ namespace Simulation.Building
                 }
 
                 bool canAfford = _currentBudget >= totalCost;
-                ghostBuilder.UpdateGhosts(_dragPositions, ghostBuilder.CurrentRotation, allValid && canAfford);
+                ghostBuilder.UpdateGhosts(_dragPositions, ghostBuilder.CurrentRotation, allValid);
 
                 // Placement execution on mouse up
                 if (Input.GetMouseButtonUp(0) && _isDragging)
                 {
                     _isDragging = false;
-                    if (allValid && canAfford && _dragPositions.Count > 0)
+                    if (allValid && _dragPositions.Count > 0)
                     {
                         foreach (var pos in _dragPositions)
                         {
@@ -1193,11 +1193,7 @@ namespace Simulation.Building
             float newPrice = newMaterial.priceModifier;
             float diff = newPrice - oldPrice;
 
-            if (_currentBudget < diff)
-            {
-                if (generalErrorSound != null) AudioSource.PlayClipAtPoint(generalErrorSound, mainCamera.transform.position);
-                return; // Can't afford
-            }
+            // Allow negative budget as per mission requirements
 
             ExecuteCommand(
                 execute: () => {
